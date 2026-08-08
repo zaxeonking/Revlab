@@ -266,7 +266,16 @@ const EngineState = (() => {
 
     if (!frame.engineOn) {
       gearIndex = 0;
-    } else if (gearMode === 'auto') {
+    } else if (gearMode === 'auto' && !frame.starting) {
+      // Skip auto-shift logic while the start-up rev flare (see
+      // rpm-simulator.js) is playing out. BUG: the flare deliberately
+      // revs RPM up to ~1650 to sell the "engine catching" moment, but
+      // that's well above Neutral's own upAt (1200) — so the instant the
+      // engine started, the gearbox saw "RPM past 1200" and silently
+      // auto-upshifted out of N into 1st before the driver ever asked to
+      // move, leaving SPEED reading a nonzero value while the gear badge
+      // still looked like it should've stayed at N. Gear now only
+      // reacts to RPM once the flare has finished settling into idle.
       stepGear(frame.rpm, frame.engineOn);
     }
     // In manual mode, gearIndex only ever changes via shiftUp()/shiftDown().
