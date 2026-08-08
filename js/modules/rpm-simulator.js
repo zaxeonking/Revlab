@@ -115,6 +115,25 @@ const RPMSimulator = (() => {
   // gear change.
   const SHIFT_DIP_THROTTLE_THRESHOLD = 8; // %
 
+  // ---- Start-up rev flare ----
+  // Ignition used to just set currentRpm straight to a low starting point
+  // and let the normal idle-chase logic carry it up to IDLE_RPM — which
+  // at ACCEL_RATE_RPM_PER_S is fast enough (a few hundred ms) that it
+  // reads as the needle simply snapping to 800 and sticking there, no
+  // "catching" feel. A real engine on start-up flares — RPM overshoots
+  // idle for a moment as it catches, then settles back down — so this
+  // adds that as a short two-phase move right after start(): rise fast
+  // to a peak above idle, then fall back to idle at a gentler rate.
+  // Purely time/rate based, no randomness. If the driver gets on the gas
+  // before the flare finishes, the flare is cancelled immediately so it
+  // never fights a real throttle input.
+  const START_FLARE_PEAK_RPM = 1650;
+  const START_FLARE_RISE_MS = 220;
+  const START_FLARE_RISE_RATE_RPM_PER_S = 7200;
+  const START_FLARE_FALL_MS = 650;
+  const START_FLARE_FALL_RATE_RPM_PER_S = 1900;
+  const START_FLARE_CANCEL_THROTTLE = 5; // % — real gas input cancels the flare
+
   const MAX_DT_S = 0.05; // clamp huge gaps (e.g. tab was backgrounded) so physics doesn't jump
 
   // ---- Simulation state (the only place RPM actually lives) ----
@@ -126,6 +145,9 @@ const RPMSimulator = (() => {
 
   let shiftDipUntil = 0;   // performance.now()-style timestamp, ms
   let shiftDipTargetRpm = 0;
+
+  let startFlarePhase = null; // null | 'rise' | 'fall'
+  let startFlarePhaseUntil = 0;
 
   let lastTimestamp = null;
   let rafHandle = null;
@@ -178,11 +200,44 @@ const RPMSimulator = (() => {
     return now() < shiftDipUntil;
   }
 
+  /** Advances (or ends) the start-up flare state machine for this frame.
+   *  Returns true if the flare consumed this frame's motion (caller
+   *  should skip the normal throttle-chase logic below it). */
+  function stepStartFlare(dtSeconds) {
+    if (!startFlarePhase) return false;
+
+    // Real gas input takes over immediately — the flare is an idle-only
+    // flourish, not something that should fight an actual driver input.
+    if (throttlePercent >= START_FLARE_CANCEL_THROTTLE) {
+      startFlarePhase = null;
+      return false;
+    }
+
+    if (now() >= startFlarePhaseUntil) {
+      if (startFlarePhase === 'rise') {
+        startFlarePhase = 'fall';
+        startFlarePhaseUntil = now() + START_FLARE_FALL_MS;
+      } else {
+        startFlarePhase = null;
+        return false;
+      }
+    }
+
+    if (startFlarePhase === 'rise') {
+      currentRpm = approach(currentRpm, START_FLARE_PEAK_RPM, START_FLARE_RISE_RATE_RPM_PER_S, dtSeconds);
+    } else if (startFlarePhase === 'fall') {
+      currentRpm = approach(currentRpm, IDLE_RPM, START_FLARE_FALL_RATE_RPM_PER_S, dtSeconds);
+    }
+    currentRpm = Math.min(Math.max(currentRpm, 0), MAX_RPM);
+    return true;
+  }
+
   function step(dtSeconds) {
     if (!engineOn) {
       // Ignition off: no target to chase, RPM just coasts down to 0.
       currentRpm = approach(currentRpm, 0, SPINDOWN_RATE_RPM_PER_S, dtSeconds);
       revLimiting = false;
+      startFlarePhase = null;
       return;
     }
 
@@ -195,6 +250,8 @@ const RPMSimulator = (() => {
       currentRpm = Math.min(Math.max(currentRpm, 0), MAX_RPM);
       return;
     }
+
+    if (stepStartFlare(dtSeconds)) return;
 
     // Rev limiter hysteresis: engage at the limit, release well below
     // it. The limit itself is now gear-specific (see currentRevLimit).
@@ -244,6 +301,7 @@ const RPMSimulator = (() => {
       engineOn,
       revLimiting,
       shifting: isDipping(),
+      starting: startFlarePhase !== null,
       idleRpm: IDLE_RPM,
       maxRpm: MAX_RPM,
       redlineRpm: REDLINE_RPM,
@@ -265,12 +323,18 @@ const RPMSimulator = (() => {
     throttlePercent = 0;
     engagedGearIndex = 0;
     shiftDipUntil = 0;
+    // Kick off the start-up flare (see stepStartFlare) — rise above idle
+    // then settle back down, instead of the needle just snapping
+    // straight to 800 and sticking there.
+    startFlarePhase = 'rise';
+    startFlarePhaseUntil = now() + START_FLARE_RISE_MS;
   }
 
   function stop() {
     engineOn = false;
     throttlePercent = 0;
     shiftDipUntil = 0;
+    startFlarePhase = null;
     // currentRpm is intentionally left as-is: it will coast down to 0
     // frame by frame via step(), not reset instantly.
   }
