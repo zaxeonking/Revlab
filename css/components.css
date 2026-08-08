@@ -229,6 +229,14 @@
   max-width: 32ch;
 }
 
+/* Start/Stop moved directly under the RPM display (was buried in the
+   footer control strip, off-screen below the fold on mobile — see
+   btn--start-engine usage in index.html) so it's reachable without
+   scrolling past the telemetry/powertrain panels. */
+.btn--start-engine {
+  width: min(100%, 220px);
+}
+
 /* ---------- Redline indicator (warning lamp above the gauge) ---------- */
 .redline-indicator {
   position: absolute;

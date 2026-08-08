@@ -99,6 +99,18 @@ const RPMSimulator = (() => {
   const SHIFT_DIP_RATE_RPM_PER_S = 6200;
   const SHIFT_DIP_FRACTION = 0.32;     // dip target = currentRpm * (1 - this)
 
+  // A dip models the clutch briefly interrupting POWER — that only makes
+  // sense for a shift that happens while the driver is actually on the
+  // gas. A downshift that happens because the driver let off the throttle
+  // (coasting to a red light, engine braking) already has RPM falling on
+  // its own smooth DECEL_RATE curve; layering a fast 6200rpm/s dip on top
+  // of that reads as a harsh second drop, not a smooth hand-off — this is
+  // the "pas gas turun ganti gigi kasar" case. Below this throttle level
+  // a shift is treated as coasting and skips the dip entirely, letting
+  // RPM continue whatever curve it was already on straight through the
+  // gear change.
+  const SHIFT_DIP_THROTTLE_THRESHOLD = 8; // %
+
   const MAX_DT_S = 0.05; // clamp huge gaps (e.g. tab was backgrounded) so physics doesn't jump
 
   // ---- Simulation state (the only place RPM actually lives) ----
@@ -282,6 +294,10 @@ const RPMSimulator = (() => {
    */
   function triggerShiftDip() {
     if (!engineOn) return;
+    // Coasting shift (throttle released): no power to interrupt, so no
+    // artificial dip — RPM just keeps following its existing decel curve
+    // through the gear change. See SHIFT_DIP_THROTTLE_THRESHOLD above.
+    if (throttlePercent < SHIFT_DIP_THROTTLE_THRESHOLD) return;
     shiftDipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - SHIFT_DIP_FRACTION));
     shiftDipUntil = now() + SHIFT_DIP_MS;
   }

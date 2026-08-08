@@ -130,6 +130,27 @@ const EngineState = (() => {
   let gearMode = 'auto'; // 'auto' | 'manual'
   let shiftLockUntil = 0; // performance.now() timestamp
 
+  // ---- Displayed-speed smoothing -------------------------------------
+  // Speed is derived per-gear (GEAR_MAX_SPEED_KMH), so the instant a
+  // shift completes, the SAME rpm maps to a different speed ceiling in
+  // the new gear — road speed can't actually pop like that just because
+  // the engine picked a new ratio. Rate-limiting the DISPLAYED number
+  // (same "approach toward a target at a capped rate" pattern
+  // RPMSimulator already uses for RPM itself) smooths that pop out
+  // without touching the underlying formula, so a shift reads as a
+  // hand-off instead of a jump — noticeable on both an accelerating
+  // upshift and a coasting/throttle-release downshift.
+  const SPEED_DISPLAY_RATE_KMH_PER_S = 260;
+  let displaySpeedKmh = 0;
+  let lastSpeedTs = null;
+
+  function approachSpeed(current, target, dtSeconds) {
+    const maxStep = SPEED_DISPLAY_RATE_KMH_PER_S * dtSeconds;
+    if (current < target) return Math.min(target, current + maxStep);
+    if (current > target) return Math.max(target, current - maxStep);
+    return current;
+  }
+
   const listeners = new Set();
 
   function notify() {
@@ -266,15 +287,28 @@ const EngineState = (() => {
     // gearIndex 0 (N) is hard-locked to 0 regardless of RPM, and every
     // other gear is capped at its own entry in GEAR_MAX_SPEED_KMH —
     // see the table above for why.
+    let targetSpeedKmh = 0;
     if (frame.engineOn && gearIndex > 0) {
       const rpmAboveIdleFraction = Math.min(
         Math.max((frame.rpm - IDLE_RPM) / (MAX_RPM - IDLE_RPM), 0),
         1
       );
-      state.speedKmh = Math.round(rpmAboveIdleFraction * GEAR_MAX_SPEED_KMH[gearIndex]);
-    } else {
-      state.speedKmh = 0;
+      targetSpeedKmh = rpmAboveIdleFraction * GEAR_MAX_SPEED_KMH[gearIndex];
     }
+
+    const nowTs = now();
+    const dtSeconds = lastSpeedTs === null ? 0 : Math.min((nowTs - lastSpeedTs) / 1000, 0.1);
+    lastSpeedTs = nowTs;
+
+    if (!frame.engineOn) {
+      // Engine off means no drivetrain connection at all — snap to 0
+      // rather than coasting the display down, matching gearIndex's own
+      // immediate reset to neutral just above.
+      displaySpeedKmh = 0;
+    } else {
+      displaySpeedKmh = approachSpeed(displaySpeedKmh, targetSpeedKmh, dtSeconds);
+    }
+    state.speedKmh = Math.round(displaySpeedKmh);
     state.boostBar = frame.engineOn
       ? Math.round(Math.max(0, frame.throttlePercent / 100 - 0.15) * MAX_BOOST_BAR * 100) / 100
       : 0;
