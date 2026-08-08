@@ -57,9 +57,24 @@
 
   .controls {
     padding: var(--sp-4);
+    /* leave room at the bottom-right so the fixed pedal never overlaps
+       the log/controls content underneath it */
+    padding-bottom: calc(var(--sp-4) + 108px);
   }
 
   .log {
     max-height: 64px;
+  }
+
+  /* On touch/mobile, the virtual pedal takes over as the primary
+     press-and-hold throttle control; the desktop button is hidden so
+     the two don't visually compete for the same gesture. Keyboard
+     (W / ArrowUp) still works if a hardware keyboard is attached. */
+  .btn--throttle {
+    display: none;
+  }
+
+  .throttle-pedal {
+    display: flex;
   }
 }

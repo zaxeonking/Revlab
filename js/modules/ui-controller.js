@@ -23,20 +23,50 @@ const UIController = (() => {
 
       throttleSlider: document.getElementById('throttleSlider'),
       throttleReadout: document.getElementById('throttleReadout'),
+      throttleButton: document.getElementById('throttleButton'),
+      throttlePedal: document.getElementById('throttlePedal'),
+      throttleIndicatorFill: document.getElementById('throttleIndicatorFill'),
+      throttleIndicatorValue: document.getElementById('throttleIndicatorValue'),
+      throttlePedalMeterFill: document.getElementById('throttlePedalMeterFill'),
       startEngineBtn: document.getElementById('startEngineBtn'),
 
       systemLog: document.getElementById('systemLog'),
 
       rpmValue: document.getElementById('rpmValue'),
       redlineIndicator: document.getElementById('redlineIndicator'),
-      gearIndicator: document.getElementById('gearValue'),
+      gearIndicator: document.getElementById('gearIndicator'),
+      gearValue: document.getElementById('gearValue'),
       gearReadout: document.getElementById('gearReadout'),
       gaugeCaption: document.getElementById('gaugeCaption'),
 
       speedReadout: document.getElementById('speedReadout'),
+      speedUnitToggle: document.getElementById('speedUnitToggle'),
       tempReadout: document.getElementById('tempReadout'),
       boostReadout: document.getElementById('boostReadout'),
+
+      gearModeToggle: document.getElementById('gearModeToggle'),
+      shiftUpBtn: document.getElementById('shiftUpBtn'),
+      shiftDownBtn: document.getElementById('shiftDownBtn'),
+      gearModeHint: document.getElementById('gearModeHint'),
     };
+  }
+
+  // Speed unit is a pure display preference — it never touches
+  // EngineState, which always keeps speed internally in km/h. Toggling
+  // just changes how the same number is formatted on screen.
+  let speedUnit = 'kmh'; // 'kmh' | 'mph'
+
+  const GEAR_MODE_HINTS = {
+    auto: 'Mode AUTO — gearbox berpindah sendiri berdasarkan RPM (dengan jeda perpindahan).',
+    manual: 'Mode MANUAL — gunakan tombol SHIFT untuk pindah gigi. Rev limiter tetap aktif jika RPM mentok tanpa shift.',
+  };
+
+  function formatSpeed(speedKmh) {
+    if (speedUnit === 'mph') {
+      const mph = Math.round(speedKmh / EngineState.KMH_PER_MPH);
+      return { value: mph, unit: 'MPH' };
+    }
+    return { value: speedKmh, unit: 'KM/H' };
   }
 
   function logLine(message) {
@@ -94,8 +124,12 @@ const UIController = (() => {
       els.redlineIndicator.dataset.active = state.inRedline ? 'true' : 'false';
     }
 
-    if (els.gearIndicator) els.gearIndicator.textContent = state.gear;
+    if (els.gearIndicator) els.gearIndicator.dataset.shifting = state.shifting ? 'true' : 'false';
+    if (els.gearValue) els.gearValue.textContent = state.gear;
     if (els.gearReadout) els.gearReadout.textContent = state.gear;
+
+    if (els.shiftUpBtn) els.shiftUpBtn.disabled = state.gearMode !== 'manual' || !state.canShiftUp;
+    if (els.shiftDownBtn) els.shiftDownBtn.disabled = state.gearMode !== 'manual' || !state.canShiftDown;
 
     if (els.throttleReadout) els.throttleReadout.textContent = `${Math.round(state.throttlePercent)}%`;
     if (els.throttleSlider) {
@@ -108,7 +142,8 @@ const UIController = (() => {
     }
 
     if (els.speedReadout) {
-      els.speedReadout.innerHTML = `${state.speedKmh} <small>KM/H</small>`;
+      const { value, unit } = formatSpeed(state.speedKmh);
+      els.speedReadout.innerHTML = `${value} <small id="speedUnitLabel">${unit}</small>`;
     }
     if (els.tempReadout) {
       els.tempReadout.innerHTML = `${state.engineTempC} <small>°C</small>`;
@@ -138,6 +173,69 @@ const UIController = (() => {
     });
   }
 
+  /**
+   * Realtime throttle indicator — driven directly by ThrottleController's
+   * own rAF loop (not EngineState), so it reflects the smoothed
+   * press/hold/release ramp itself, live, regardless of which input
+   * source (keyboard, button, pedal, or slider-via-EngineState) is
+   * currently driving RPM.
+   */
+  function renderThrottleIndicator(percent, held) {
+    const rounded = Math.round(percent);
+    if (els.throttleIndicatorFill) els.throttleIndicatorFill.style.width = `${rounded}%`;
+    if (els.throttleIndicatorValue) els.throttleIndicatorValue.textContent = `${rounded}%`;
+    if (els.throttlePedalMeterFill) els.throttlePedalMeterFill.style.width = `${rounded}%`;
+    if (els.throttleButton) els.throttleButton.dataset.pressed = held ? 'true' : 'false';
+    if (els.throttlePedal) els.throttlePedal.dataset.pressed = held ? 'true' : 'false';
+  }
+
+  function bindSpeedUnitToggle() {
+    if (!els.speedUnitToggle) return;
+    els.speedUnitToggle.addEventListener('click', () => {
+      speedUnit = speedUnit === 'kmh' ? 'mph' : 'kmh';
+      // Re-render immediately off the last known state so the switch
+      // feels instant rather than waiting for the next sim frame.
+      render(EngineState.getState());
+      logLine(`Satuan kecepatan diubah ke ${speedUnit === 'mph' ? 'MPH' : 'KM/H'}.`);
+    });
+  }
+
+  function bindGearControls() {
+    if (els.gearModeToggle) {
+      els.gearModeToggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('.segmented__btn');
+        if (!btn) return;
+        const mode = btn.dataset.mode;
+        EngineState.setGearMode(mode);
+
+        els.gearModeToggle.querySelectorAll('.segmented__btn').forEach((b) => {
+          b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
+        });
+        if (els.gearModeHint) els.gearModeHint.textContent = GEAR_MODE_HINTS[mode] || '';
+
+        logLine(mode === 'manual'
+          ? 'GEAR MODE → MANUAL — gunakan tombol SHIFT.'
+          : 'GEAR MODE → AUTO — gearbox kembali mengendalikan sendiri.');
+      });
+    }
+
+    if (els.shiftUpBtn) {
+      els.shiftUpBtn.addEventListener('click', () => {
+        const before = EngineState.getState().gear;
+        const after = EngineState.shiftUp().gear;
+        if (after !== before) logLine(`SHIFT UP — gigi ${before} → ${after}.`);
+      });
+    }
+
+    if (els.shiftDownBtn) {
+      els.shiftDownBtn.addEventListener('click', () => {
+        const before = EngineState.getState().gear;
+        const after = EngineState.shiftDown().gear;
+        if (after !== before) logLine(`SHIFT DOWN — gigi ${before} → ${after}.`);
+      });
+    }
+  }
+
   function bindStartButton() {
     if (!els.startEngineBtn) return;
     els.startEngineBtn.addEventListener('click', () => {
@@ -156,12 +254,22 @@ const UIController = (() => {
     gaugeRef = gauge;
     cacheEls();
     bindThrottleSlider();
+    bindSpeedUnitToggle();
+    bindGearControls();
     bindStartButton();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
 
     EngineState.subscribe((state) => render(state));
 
+    // Press/hold throttle sources (keyboard W/ArrowUp, desktop button,
+    // mobile pedal) all live in ThrottleController — it owns the
+    // press/hold/release ramp and feeds EngineState.setThrottle() itself
+    // every frame, so ui-controller only needs to render what it reports.
+    ThrottleController.init(els);
+    ThrottleController.subscribe((percent, held) => renderThrottleIndicator(percent, held));
+
     logLine('UI controller ready — bound to EngineState + RPMSimulator.');
+    logLine('Throttle: keyboard (W / ↑), tombol UI, dan pedal mobile aktif.');
   }
 
   return { init, logLine, setEngineStatus, setAudioStatusLabel };

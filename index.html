@@ -95,7 +95,7 @@
             <span class="redline-indicator__label">REDLINE</span>
           </div>
 
-          <div class="gear-indicator" id="gearIndicator" aria-label="Current gear">
+          <div class="gear-indicator" id="gearIndicator" aria-label="Current gear" data-shifting="false">
             <span class="gear-indicator__value" id="gearValue">N</span>
           </div>
         </div>
@@ -114,7 +114,16 @@
           </li>
           <li class="telemetry-item">
             <span class="telemetry-item__label">SPEED</span>
-            <span class="telemetry-item__value telemetry-item__value--mono" id="speedReadout">0 <small>KM/H</small></span>
+            <span class="telemetry-item__value-group">
+              <span class="telemetry-item__value telemetry-item__value--mono" id="speedReadout">0 <small id="speedUnitLabel">KM/H</small></span>
+              <button
+                id="speedUnitToggle"
+                class="unit-toggle"
+                type="button"
+                aria-label="Ganti satuan kecepatan antara KM/H dan MPH"
+                title="Ganti satuan KM/H ⇄ MPH"
+              >KM/H ⇄ MPH</button>
+            </span>
           </li>
           <li class="telemetry-item">
             <span class="telemetry-item__label">ENGINE TEMP</span>
@@ -129,6 +138,35 @@
             <span class="telemetry-item__value telemetry-item__value--mono" id="gearReadout">N</span>
           </li>
         </ul>
+
+        <div class="gear-controls" id="gearControls">
+          <div class="gear-controls__mode">
+            <span class="field__label">GEAR MODE</span>
+            <div class="segmented" id="gearModeToggle" role="group" aria-label="Mode perpindahan gigi">
+              <button type="button" class="segmented__btn" data-mode="auto" aria-pressed="true">AUTO</button>
+              <button type="button" class="segmented__btn" data-mode="manual" aria-pressed="false">MANUAL</button>
+            </div>
+          </div>
+
+          <div class="gear-controls__shift">
+            <button
+              id="shiftDownBtn"
+              class="btn btn--shift"
+              type="button"
+              disabled
+              aria-label="Pindah gigi turun"
+            >▼ SHIFT</button>
+            <button
+              id="shiftUpBtn"
+              class="btn btn--shift"
+              type="button"
+              disabled
+              aria-label="Pindah gigi naik"
+            >SHIFT ▲</button>
+          </div>
+
+          <p class="field__hint" id="gearModeHint">Mode AUTO — gearbox berpindah sendiri berdasarkan RPM (dengan jeda perpindahan).</p>
+        </div>
 
         <p class="panel__note" id="telemetryNote">Nilai di atas dihitung dari input throttle (state JS, bukan angka acak). Siap digantikan data simulator mesin sungguhan.</p>
       </section>
@@ -148,9 +186,31 @@
           disabled
           aria-describedby="throttleReadout"
         />
+
+        <div class="throttle-indicator" id="throttleIndicator" aria-hidden="true">
+          <div class="throttle-indicator__track">
+            <div class="throttle-indicator__fill" id="throttleIndicatorFill"></div>
+          </div>
+          <span class="throttle-indicator__value" id="throttleIndicatorValue">0%</span>
+        </div>
+
+        <p class="field__hint">
+          Tahan <kbd class="key">W</kbd> / <kbd class="key">&uarr;</kbd>, atau tekan &amp; tahan tombol THROTTLE di bawah.
+        </p>
       </div>
 
       <div class="controls__group controls__group--action">
+        <button
+          id="throttleButton"
+          class="btn btn--throttle"
+          type="button"
+          data-pressed="false"
+          aria-label="Throttle — tekan dan tahan untuk menambah RPM"
+        >
+          <span class="btn--throttle__label">THROTTLE</span>
+          <span class="btn--throttle__hint">tekan &amp; tahan</span>
+        </button>
+
         <button id="startEngineBtn" class="btn btn--primary" type="button">
           START ENGINE
         </button>
@@ -166,12 +226,30 @@
 
     </footer>
 
+    <!-- ============ MOBILE THROTTLE PEDAL ============ -->
+    <!-- Hidden on desktop via responsive.css; shown as a fixed, large
+         press-and-hold pedal on touch/mobile viewports where reaching a
+         small footer button is less natural than a bottom-edge pedal. -->
+    <button
+      id="throttlePedal"
+      class="throttle-pedal"
+      type="button"
+      data-pressed="false"
+      aria-label="Pedal gas — tekan dan tahan untuk menambah RPM"
+    >
+      <span class="throttle-pedal__label">GAS</span>
+      <div class="throttle-pedal__meter" aria-hidden="true">
+        <div class="throttle-pedal__meter-fill" id="throttlePedalMeterFill"></div>
+      </div>
+    </button>
+
   </div>
 
   <script src="js/modules/gauge.js"></script>
   <script src="js/modules/rpm-simulator.js"></script>
   <script src="js/modules/engine-state.js"></script>
   <script src="js/modules/audio-engine.js"></script>
+  <script src="js/modules/throttle-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>
   <script src="js/main.js"></script>
 </body>

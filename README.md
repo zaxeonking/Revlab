@@ -58,10 +58,12 @@ revlab/
 | Gauge RPM (SVG, ticks, redline)    | ✅ jarum digerakkan simulasi RPM tiap frame       |
 | Digital RPM value                  | ✅ dari `RPMSimulator`, bukan snapshot            |
 | Redline indicator (lampu warning)  | ✅ aktif saat RPM ≥ redline                      |
-| Gear indicator                     | ✅ dihitung deterministik dari RPM               |
+| Gear indicator                     | ✅ state machine dengan hysteresis + shift-lock delay — lihat di bawah |
+| Gear mode AUTO / MANUAL            | ✅ toggle mode + tombol SHIFT ▲▼ manual           |
 | Throttle percentage                | ✅ slider aktif saat mesin hidup                 |
+| Throttle press/hold (keyboard/UI/mobile) | ✅ **W / ↑, tombol UI, pedal mobile — lihat di bawah** |
 | Engine temperature                 | ✅ deterministik, mengikuti RPM                  |
-| Speed                              | ✅ deterministik, mengikuti RPM                  |
+| Speed                              | ✅ deterministik, satuan KM/H ⇄ MPH (toggle tampilan) |
 | Boost / pressure                   | ✅ deterministik, mengikuti throttle             |
 | Engine status (chip)               | ✅ off / idle / running / rev limiter            |
 | Start / Stop engine button         | ✅ toggle start/stop simulasi RPM                |
@@ -96,12 +98,93 @@ frame (`dt`), dan **tidak memakai `Math.random()` sama sekali**:
 snapshot dari `RPMSimulator` setiap frame dan menurunkan gear/speed/
 temp/boost dari situ dengan rumus tetap (deterministik).
 
+## Kontrol throttle press/hold (`throttle-controller.js`)
+
+Selain slider (posisi absolut), throttle sekarang punya jalur input
+bergaya "pedal" — ditekan untuk naik, dilepas untuk turun:
+
+- **Desktop**: tombol `W`, tombol panah `↑`, atau tombol **THROTTLE**
+  di control strip. Ketiganya bisa ditahan.
+- **Mobile**: pedal gas melingkar mengambang di kanan-bawah layar
+  (muncul otomatis di viewport ≤640px, tombol THROTTLE desktop
+  disembunyikan di lebar itu supaya tidak tumpang tindih gestur).
+- **Press / hold / release**: setiap sumber input hanya melapor
+  "ditekan" atau "tidak" ke satu `Set` sumber aktif di
+  `ThrottleController`. Selama set itu tidak kosong, throttle naik
+  menuju 100%; begitu kosong (semua sumber dilepas), throttle turun
+  menuju 0% — dengan laju berbeda (naik lebih cepat dari turun),
+  independen dari inersia RPM di `rpm-simulator.js`. Jadi ada dua
+  lapis smoothing: kecepatan "kaki" (ramp throttle) lalu kecepatan
+  flywheel (inersia RPM) — sama seperti pedal gas sungguhan yang
+  meneruskan gerakan kaki ke RPM secara bertahap, bukan instan.
+- **Keyboard vs touch tidak bentrok**: karena semua sumber cuma
+  menambah/menghapus id dirinya sendiri dari satu `Set`, menahan `W`
+  sambil juga menyentuh pedal mobile (mis. keyboard eksternal di
+  tablet) tidak menghasilkan nilai ganda — throttle tetap hanya
+  mengejar satu target (100% jika *ada* sumber aktif, 0% jika tidak).
+  Pointer Events (`pointerdown`/`pointerup`/`lostpointercapture`)
+  dipakai untuk tombol & pedal supaya mouse, touch, dan pen memakai
+  jalur kode yang sama tanpa cabang khusus per perangkat.
+- **Indikator throttle realtime**: bar di dekat slider (desktop) dan
+  meter mini di badan pedal (mobile) di-update setiap frame langsung
+  dari `ThrottleController.subscribe()` — independen dari RPM, jadi
+  tetap responsif walau engine mati (misalnya untuk melihat pedal
+  ditekan sebelum START ENGINE, meski RPM baru bergerak setelah
+  mesin hidup).
+
 `js/modules/audio-engine.js` tetap berisi kerangka API (`init`, `start`,
 `stop`, `setThrottle`, `getState`) yang seluruhnya no-op dengan log
 konsol — kontrak fungsi untuk implementasi Web Audio API di tahap
 berikutnya, belum tersambung ke tombol START/STOP di UI.
 
-## Desain
+## Perpindahan gigi (`engine-state.js` — `stepGear`)
+
+Gear tidak lagi murni hasil lookup `gearForRpm(rpm)` seperti tahap
+sebelumnya — sekarang jadi state machine kecil di `stepGear()`, karena
+lookup polos tidak punya "ingatan": begitu RPM sedikit berosilasi di
+sekitar titik pindah gigi (mis. persis 3500rpm), gear akan lompat
+bolak-balik setiap frame, terasa "gelitikan"/mentok-mentok.
+
+Dua mekanisme mengatasi itu:
+
+- **Hysteresis** — titik pindah naik (`upAt`) dan titik pindah turun
+  (`downAt`) untuk gear yang sama sengaja berbeda dan berjarak cukup
+  jauh (mis. gigi 2: naik di 3500rpm, baru turun lagi di 1500rpm).
+  Begitu naik gigi, RPM harus turun jauh lebih dalam dulu sebelum
+  turun gigi lagi — meniru gearbox sungguhan.
+- **Shift-lock delay** (`SHIFT_LOCK_MS` = 260ms) — setiap kali gearbox
+  pindah gigi (naik atau turun), ia "terkunci" sebentar dan menolak
+  pindah gigi lagi sampai delay itu habis. Ini yang menghasilkan jeda
+  terasa (seperti waktu kopling/synchro) alih-alih gear number yang
+  berubah instan. Selama jeda ini, indikator gear di gauge berkedip
+  redup (`data-shifting="true"`) sebagai umpan balik visual.
+
+**Mode AUTO vs MANUAL** (`EngineState.setGearMode`):
+
+- **AUTO** (default) — `stepGear()` jalan setiap frame simulasi,
+  gearbox pindah sendiri berbasis RPM seperti dijelaskan di atas.
+- **MANUAL** — `stepGear()` otomatis berhenti dipanggil; gear hanya
+  berubah lewat `EngineState.shiftUp()` / `shiftDown()` (tombol SHIFT
+  ▲▼ di panel telemetry). Shift-lock yang sama tetap berlaku supaya
+  shift manual terasa sama beratnya dengan auto — spam-klik tombol
+  SHIFT tidak akan melompat beberapa gigi sekaligus dalam sekejap.
+  Jika RPM mentok redline tanpa di-shift naik, rev limiter tetap
+  aktif seperti biasa (mesin tidak "menyelamatkan diri" sendiri di
+  mode manual).
+- Pindah dari AUTO ke MANUAL tidak mengubah gigi saat itu juga — mode
+  manual melanjutkan persis dari gigi terakhir yang dipilih AUTO.
+
+## Satuan kecepatan (KM/H ⇄ MPH)
+
+`EngineState` tetap menyimpan `speedKmh` sebagai satu-satunya sumber
+data (tidak berubah, supaya `boostBar`/formula lain yang mungkin
+bergantung padanya tidak perlu disentuh). Toggle satuan murni ada di
+`ui-controller.js`: `speedUnit` adalah preferensi tampilan lokal, dan
+`formatSpeed()` mengonversi ke MPH (`km/h ÷ 1.609344`) hanya saat
+merender ke DOM. Tombol toggle ada di sebelah readout SPEED di panel
+TELEMETRY.
+
+
 
 - **Palet**: dasar hitam/abu gelap (`--bg-0` `#0a0b0d` → `--bg-2` `#1b1d22`),
   dua accent: amber `--accent-amber` `#ff7a1a` (peringatan/redline) dan

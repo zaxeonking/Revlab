@@ -5,7 +5,10 @@
  * (RPMSimulator, requestAnimationFrame-based), and connects everything
  * to the DOM via UIController. RPM is now a genuine physics simulation
  * (inertia, accel/decel rates, rev limiter) — not a snapshot formula and
- * not random. AudioEngine remains a documented stub.
+ * not random. Throttle can be driven by the slider, keyboard (W /
+ * ArrowUp), the desktop throttle button, or the mobile pedal — all via
+ * ThrottleController, which UIController wires up. AudioEngine remains
+ * a documented stub.
  * -----------------------------------------------------------------------
  */
 

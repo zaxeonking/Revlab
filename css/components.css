@@ -295,6 +295,19 @@
   line-height: 1;
 }
 
+/* Brief pulse while the gearbox is "locked" mid-shift (see
+   engine-state.js SHIFT_LOCK_MS) — gives the same pause a visible cue
+   instead of the gear value just silently freezing for a quarter
+   second. */
+.gear-indicator[data-shifting="true"] {
+  border-color: var(--accent-amber);
+}
+
+.gear-indicator[data-shifting="true"] .gear-indicator__value {
+  color: var(--accent-amber);
+  opacity: 0.6;
+}
+
 /* ---------- Telemetry list ---------- */
 .telemetry-list {
   display: flex;
@@ -327,6 +340,98 @@
 .telemetry-item__value--mono {
   font-family: var(--font-mono);
   color: var(--accent-cyan);
+}
+
+.telemetry-item__value-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+/* ---------- Unit toggle (speed KM/H ⇄ MPH) ---------- */
+.unit-toggle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-1);
+  background: var(--bg-1);
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.unit-toggle:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* ---------- Gear controls (mode + manual shift) ---------- */
+.gear-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border-0);
+}
+
+.gear-controls__mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.segmented__btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.segmented__btn + .segmented__btn {
+  border-left: 1px solid var(--border-1);
+}
+
+.segmented__btn[aria-pressed="true"] {
+  background: var(--accent-cyan-dim);
+  color: var(--text-0);
+}
+
+.gear-controls__shift {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.btn--shift {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-wide);
+  padding: var(--sp-3);
+  text-align: center;
+}
+
+.btn--shift:not(:disabled):hover {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: var(--bg-0);
 }
 
 /* ---------- Throttle slider ---------- */
@@ -362,6 +467,151 @@
 
 .throttle-slider:disabled {
   opacity: 0.4;
+}
+
+/* ---------- Throttle realtime indicator (vertical-feel bar) ---------- */
+.throttle-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.throttle-indicator__track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  overflow: hidden;
+}
+
+.throttle-indicator__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-cyan-dim), var(--accent-cyan), var(--accent-amber));
+  /* Deliberately no CSS transition: ThrottleController already ramps
+     this value smoothly every animation frame (press/hold/release +
+     engine inertia). A CSS transition on top would double up the
+     smoothing and add uncontrolled lag, same reasoning as the gauge
+     needle in .gauge__needle-group above. */
+}
+
+.throttle-indicator__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--accent-cyan);
+  min-width: 3.5ch;
+  text-align: right;
+}
+
+.key {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--text-1);
+}
+
+/* ---------- Desktop throttle button (press & hold) ---------- */
+.btn--throttle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-color: var(--accent-cyan-dim);
+  color: var(--accent-cyan);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none; /* let ThrottleController's Pointer Events own this element */
+}
+
+.btn--throttle__label {
+  font-size: var(--fs-md);
+}
+
+.btn--throttle__hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+.btn--throttle:not(:disabled):hover {
+  background: var(--bg-3);
+  border-color: var(--accent-cyan);
+}
+
+.btn--throttle[data-pressed="true"] {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: var(--bg-0);
+  box-shadow: 0 0 16px rgba(41, 224, 232, 0.35);
+}
+
+.btn--throttle[data-pressed="true"] .btn--throttle__hint {
+  color: var(--bg-1);
+}
+
+/* ---------- Mobile virtual throttle pedal ---------- */
+/* Hidden by default (desktop); responsive.css turns this on for
+   touch/mobile viewports. Fixed to the bottom-right edge, thumb-sized,
+   so it behaves like a real gas pedal rather than a small UI button. */
+.throttle-pedal {
+  display: none;
+  position: fixed;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 50;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-cyan-dim);
+  background: radial-gradient(circle at 35% 30%, var(--bg-3), var(--bg-1) 70%);
+  box-shadow: var(--shadow-panel);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none; /* critical: prevents scroll/zoom from stealing the hold gesture */
+}
+
+.throttle-pedal__label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  letter-spacing: var(--tracking-wider);
+  color: var(--accent-cyan);
+}
+
+.throttle-pedal__meter {
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+.throttle-pedal__meter-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-amber));
+  /* No transition — driven every rAF frame by ThrottleController, same
+     reasoning as .throttle-indicator__fill above. */
+}
+
+.throttle-pedal[data-pressed="true"] {
+  border-color: var(--accent-cyan);
+  background: radial-gradient(circle at 35% 30%, var(--accent-cyan-dim), var(--bg-1) 75%);
+  box-shadow: 0 0 24px rgba(41, 224, 232, 0.45);
+  transform: scale(0.96);
 }
 
 /* ---------- Buttons ---------- */
