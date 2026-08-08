@@ -47,14 +47,15 @@ const RPMSimulator = (() => {
   const REV_LIMIT_RPM = 8800;    // engine's absolute fuel-cut ceiling (top gear / neutral use this)
   const REV_LIMIT_HYSTERESIS = 450; // fuel-cut releases once RPM falls this far below whichever limit is active
 
-  // Idle used to sit perfectly flat at exactly IDLE_RPM forever — no
-  // Math.random anywhere in this module, but a dead-flat needle at idle
-  // reads as broken/frozen rather than an engine actually idling. This
-  // adds a small DETERMINISTIC lope (a sine wave driven by elapsed time,
-  // not randomness) so idle breathes a little, same as a real engine —
-  // only applied near-idle (throttle basically closed), so it never
-  // touches the RPM curve once the driver is actually on the gas.
-  const IDLE_WOBBLE_RPM = 14;
+  // Idle used to sit perfectly flat at exactly IDLE_RPM forever. This
+  // used to add a small deterministic sine-wave lope (a few rpm) so it
+  // wouldn't read as dead/frozen — but in practice, sitting in Neutral,
+  // that constant micro up-down motion reads as an unstable/broken idle
+  // rather than a subtle "breathing" effect, so it's disabled: idle now
+  // holds dead flat at IDLE_RPM until the driver actually does something
+  // (gas, shift). Kept as 0 (not deleted) so it's a one-line change to
+  // bring back later, tuned smaller, if a subtle idle lope is wanted.
+  const IDLE_WOBBLE_RPM = 0;
   const IDLE_WOBBLE_HZ = 1.3;
   const IDLE_WOBBLE_THROTTLE_THRESHOLD = 2; // % — wobble only applies this close to closed throttle
 
