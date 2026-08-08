@@ -44,26 +44,42 @@ const RPMSimulator = (() => {
   const IDLE_RPM = 800;
   const MAX_RPM = 9000;          // absolute ceiling — matches gauge face (9 x 1000)
   const REDLINE_RPM = 7500;      // visual redline zone start — matches gauge.js REDLINE_START_K
-  const REV_LIMIT_RPM = 8800;    // fuel-cut engages at/above this
-  const REV_LIMIT_HYSTERESIS = 450; // fuel-cut releases once RPM falls this far below the limit
+  const REV_LIMIT_RPM = 8800;    // engine's absolute fuel-cut ceiling (top gear / neutral use this)
+  const REV_LIMIT_HYSTERESIS = 450; // fuel-cut releases once RPM falls this far below whichever limit is active
 
-  // Base rates before the per-gear multiplier below is applied. Lowered
-  // from the previous version and pushed onto a per-gear curve instead —
-  // a flat, high rate in every gear is what made the pull feel too easy/
-  // light regardless of gear. Real engines don't rev the same in every
-  // gear: low gears multiply torque and snap RPM up fast, top gear is a
-  // long, comparatively lazy pull.
-  const ACCEL_RATE_RPM_PER_S = 3600; // gear-1 baseline (see GEAR_ACCEL_MULT)
-  const DECEL_RATE_RPM_PER_S = 3000; // how fast RPM can fall when throttle drops (engine braking)
+  // Idle used to sit perfectly flat at exactly IDLE_RPM forever — no
+  // Math.random anywhere in this module, but a dead-flat needle at idle
+  // reads as broken/frozen rather than an engine actually idling. This
+  // adds a small DETERMINISTIC lope (a sine wave driven by elapsed time,
+  // not randomness) so idle breathes a little, same as a real engine —
+  // only applied near-idle (throttle basically closed), so it never
+  // touches the RPM curve once the driver is actually on the gas.
+  const IDLE_WOBBLE_RPM = 14;
+  const IDLE_WOBBLE_HZ = 1.3;
+  const IDLE_WOBBLE_THROTTLE_THRESHOLD = 2; // % — wobble only applies this close to closed throttle
+
+  // Base rates before the per-gear multiplier below is applied. Pushed
+  // up from the previous tune — the old flat 3600 rpm/s baseline made
+  // every gear feel like it was towing something. Real engines pull
+  // harder than that off idle, especially in the lower gears where
+  // GEAR_ACCEL_MULT below multiplies this further.
+  const ACCEL_RATE_RPM_PER_S = 4400; // gear-1 baseline (see GEAR_ACCEL_MULT)
+  // Lowered a lot from the previous tune: releasing the throttle used to
+  // snap RPM back down at 3000 rpm/s, which read as an abrupt cut rather
+  // than an engine coasting down under its own compression/engine-braking.
+  // This is what makes the needle drift down "pelan-pelan" after you let
+  // off the gas, most noticeably right after a shift when the dip hands
+  // off into this same decel chase.
+  const DECEL_RATE_RPM_PER_S = 1500;
   const SPINDOWN_RATE_RPM_PER_S = 2000; // how fast RPM falls to 0 with ignition off (coasting)
 
   // Per-gear acceleration multiplier applied on top of ACCEL_RATE_RPM_PER_S.
   // Index 0 = neutral/no gear engaged (kept brisk — revving in neutral
   // has no drivetrain load), index 1 = 1st gear (heaviest multiplier,
   // most torque advantage), climbing down to index 6 = 6th gear (flattest,
-  // "long" pull). These are what actually make each gear feel distinct
-  // rather than just a cosmetic label next to an identical RPM curve.
-  const GEAR_ACCEL_MULT = [1.35, 1.55, 1.25, 1.05, 0.88, 0.74, 0.62];
+  // "long" pull). Spread widened on the low end for a heavier, more
+  // torquey low-gear pull specifically.
+  const GEAR_ACCEL_MULT = [1.35, 1.75, 1.35, 1.10, 0.90, 0.75, 0.62];
 
   // ---- Shift-dip model ----
   // While a shift dip is active, RPM ignores the normal throttle-chases-
@@ -71,8 +87,16 @@ const RPMSimulator = (() => {
   // (once the dip window elapses) resumes normal chasing from wherever
   // it ended up — exactly like a driver briefly lifting off / clutching
   // in, then getting back on the gas in the new gear.
-  const SHIFT_DIP_MS = 220;            // how long the dip window lasts
-  const SHIFT_DIP_RATE_RPM_PER_S = 9000; // dip itself is a quick, sharp drop
+  // Dip window widened and its rate slowed down a lot (was 220ms /
+  // 9000 rpm/s) — that combo was a near-instant cliff-edge drop, which
+  // is the "kasar" (harsh) snap between gears. This stretches the same
+  // dip out into something that reads as a deliberate, smooth clutch
+  // moment instead of a glitchy jump cut. The rate is still fast enough
+  // to fully reach its target within the window even for the biggest
+  // dips (shifting near redline in a high gear) — see stepGear()'s
+  // SHIFT_LOCK_MS in engine-state.js, which was widened to match.
+  const SHIFT_DIP_MS = 450;
+  const SHIFT_DIP_RATE_RPM_PER_S = 6200;
   const SHIFT_DIP_FRACTION = 0.32;     // dip target = currentRpm * (1 - this)
 
   const MAX_DT_S = 0.05; // clamp huge gaps (e.g. tab was backgrounded) so physics doesn't jump
@@ -108,6 +132,32 @@ const RPMSimulator = (() => {
       : 1;
   }
 
+  // Per-gear rev limiter ceiling — the piece that was missing before.
+  // The old rev limiter was a single global REV_LIMIT_RPM regardless of
+  // which gear was engaged, so "limiter per gear" wasn't actually a
+  // thing yet; every gear just revved all the way to the same 8800 rpm
+  // engine ceiling. This gives each gear its OWN fuel-cut ceiling with
+  // some headroom past that gear's normal auto-upshift point (see
+  // GEARS.upAt in engine-state.js) — mainly felt in MANUAL mode, since
+  // AUTO shifts you out of a gear before you'd ever reach its ceiling.
+  // Neutral and top gear both fall back to the engine's absolute limit:
+  // neutral has no drivetrain load to protect, and top gear has nowhere
+  // higher to shift into anyway.
+  const GEAR_REV_LIMIT_RPM = [
+    REV_LIMIT_RPM, // N
+    3300,          // 1
+    4800,          // 2
+    6300,          // 3
+    7800,          // 4
+    REV_LIMIT_RPM, // 5
+    REV_LIMIT_RPM, // 6
+  ];
+
+  function currentRevLimit() {
+    const limit = GEAR_REV_LIMIT_RPM[engagedGearIndex];
+    return limit !== undefined ? limit : REV_LIMIT_RPM;
+  }
+
   function isDipping() {
     return now() < shiftDipUntil;
   }
@@ -130,12 +180,17 @@ const RPMSimulator = (() => {
       return;
     }
 
-    // Rev limiter hysteresis: engage at the limit, release well below it.
-    if (currentRpm >= REV_LIMIT_RPM) revLimiting = true;
-    if (revLimiting && currentRpm <= REV_LIMIT_RPM - REV_LIMIT_HYSTERESIS) revLimiting = false;
+    // Rev limiter hysteresis: engage at the limit, release well below
+    // it. The limit itself is now gear-specific (see currentRevLimit).
+    const revLimit = currentRevLimit();
+    if (currentRpm >= revLimit) revLimiting = true;
+    if (revLimiting && currentRpm <= revLimit - REV_LIMIT_HYSTERESIS) revLimiting = false;
 
     const effectiveThrottle = revLimiting ? 0 : throttlePercent;
-    const targetRpm = IDLE_RPM + (effectiveThrottle / 100) * (MAX_RPM - IDLE_RPM);
+    const idleWobble = effectiveThrottle < IDLE_WOBBLE_THROTTLE_THRESHOLD
+      ? Math.sin((now() / 1000) * IDLE_WOBBLE_HZ * Math.PI * 2) * IDLE_WOBBLE_RPM
+      : 0;
+    const targetRpm = IDLE_RPM + (effectiveThrottle / 100) * (MAX_RPM - IDLE_RPM) + idleWobble;
 
     const risingRate = ACCEL_RATE_RPM_PER_S * gearAccelMultiplier();
     const rate = targetRpm >= currentRpm ? risingRate : DECEL_RATE_RPM_PER_S;
@@ -176,7 +231,7 @@ const RPMSimulator = (() => {
       idleRpm: IDLE_RPM,
       maxRpm: MAX_RPM,
       redlineRpm: REDLINE_RPM,
-      revLimitRpm: REV_LIMIT_RPM,
+      revLimitRpm: currentRevLimit(),
     };
   }
 

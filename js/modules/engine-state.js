@@ -96,7 +96,11 @@ const EngineState = (() => {
   // How long (ms) the gearbox "locks" after any shift before it will
   // shift again — models clutch/synchro engagement time. This is what
   // turns an instant snap into a believable brief pause between shifts.
-  const SHIFT_LOCK_MS = 260;
+  // Kept comfortably above RPMSimulator's SHIFT_DIP_MS (450ms) so the
+  // dip always has time to fully settle onto its target before the next
+  // stepGear() check — the safeDownAt() margin above only works if the
+  // dip has actually finished by the time the lock releases.
+  const SHIFT_LOCK_MS = 550;
 
   let state = {
     status: 'off',        // 'off' | 'idle' | 'running' | 'redline'
@@ -251,7 +255,7 @@ const EngineState = (() => {
     state.gearMode = gearMode;
     // "shifting" reflects the actual RPM dip happening in RPMSimulator
     // (frame.shifting) OR-ed with our own shift-lock window — the two
-    // usually overlap almost exactly (dip is 220ms, lock is 260ms) but
+    // usually overlap almost exactly (dip is 450ms, lock is 550ms) but
     // using both means the UI never shows "not shifting" for the few ms
     // where one has ended and the other hasn't quite caught up.
     state.shifting = frame.engineOn && (frame.shifting || isShiftLocked());
