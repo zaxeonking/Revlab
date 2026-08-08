@@ -300,10 +300,17 @@ const EngineState = (() => {
     const dtSeconds = lastSpeedTs === null ? 0 : Math.min((nowTs - lastSpeedTs) / 1000, 0.1);
     lastSpeedTs = nowTs;
 
-    if (!frame.engineOn) {
-      // Engine off means no drivetrain connection at all — snap to 0
-      // rather than coasting the display down, matching gearIndex's own
-      // immediate reset to neutral just above.
+    if (!frame.engineOn || gearIndex === 0) {
+      // No drivetrain connection at all — either ignition off, or the
+      // gearbox is in neutral. Snap straight to 0 rather than smoothing
+      // the display down: the wheels are physically disconnected from
+      // the engine the instant neutral is engaged (coasting to a stop
+      // and dropping into N, or a manual shift down to N), same as when
+      // the engine itself stops. BUG: this used to only check
+      // frame.engineOn, so falling into neutral while the engine kept
+      // running left the speed readout gliding down over ~1s through
+      // the SPEED_DISPLAY_RATE_KMH_PER_S ramp instead of reading 0
+      // immediately.
       displaySpeedKmh = 0;
     } else {
       displaySpeedKmh = approachSpeed(displaySpeedKmh, targetSpeedKmh, dtSeconds);

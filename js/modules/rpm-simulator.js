@@ -58,12 +58,14 @@ const RPMSimulator = (() => {
   const IDLE_WOBBLE_HZ = 1.3;
   const IDLE_WOBBLE_THROTTLE_THRESHOLD = 2; // % — wobble only applies this close to closed throttle
 
-  // Base rates before the per-gear multiplier below is applied. Pushed
-  // up from the previous tune — the old flat 3600 rpm/s baseline made
-  // every gear feel like it was towing something. Real engines pull
-  // harder than that off idle, especially in the lower gears where
-  // GEAR_ACCEL_MULT below multiplies this further.
-  const ACCEL_RATE_RPM_PER_S = 4400; // gear-1 baseline (see GEAR_ACCEL_MULT)
+  // Base rates before the per-gear multiplier below is applied. Dialed
+  // BACK DOWN from the previous tune (was 4400) — that made RPM climb
+  // fast enough in every gear to feel light/revvy instead of like it's
+  // pulling real mass against it. Lower baseline = more "tarikan berat":
+  // the flywheel visibly resists spinning up rather than snapping to
+  // target, especially noticeable in the higher gears once
+  // GEAR_ACCEL_MULT below has less multiplier left to compensate with.
+  const ACCEL_RATE_RPM_PER_S = 3100; // gear-1 baseline (see GEAR_ACCEL_MULT)
   // Lowered a lot from the previous tune: releasing the throttle used to
   // snap RPM back down at 3000 rpm/s, which read as an abrupt cut rather
   // than an engine coasting down under its own compression/engine-braking.
@@ -77,9 +79,11 @@ const RPMSimulator = (() => {
   // Index 0 = neutral/no gear engaged (kept brisk — revving in neutral
   // has no drivetrain load), index 1 = 1st gear (heaviest multiplier,
   // most torque advantage), climbing down to index 6 = 6th gear (flattest,
-  // "long" pull). Spread widened on the low end for a heavier, more
-  // torquey low-gear pull specifically.
-  const GEAR_ACCEL_MULT = [1.35, 1.75, 1.35, 1.10, 0.90, 0.75, 0.62];
+  // "long" pull). Spread widened further on both ends this pass — low
+  // gears keep (roughly) their punch even with the lower baseline above,
+  // while top gears get noticeably flatter/heavier so the "long pull" of
+  // a high gear actually feels like it's working against something.
+  const GEAR_ACCEL_MULT = [1.35, 1.85, 1.40, 1.05, 0.78, 0.60, 0.46];
 
   // ---- Shift-dip model ----
   // While a shift dip is active, RPM ignores the normal throttle-chases-
