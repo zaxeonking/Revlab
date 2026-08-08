@@ -137,6 +137,33 @@ bergaya "pedal" — ditekan untuk naik, dilepas untuk turun:
 konsol — kontrak fungsi untuk implementasi Web Audio API di tahap
 berikutnya, belum tersambung ke tombol START/STOP di UI.
 
+## Tarikan per gigi & shift dip (`rpm-simulator.js`)
+
+Dua perubahan fisika supaya perpindahan gigi terasa nyata, bukan cuma
+label angka yang berubah di atas kurva RPM yang identik:
+
+- **Tarikan berbeda per gigi** — laju kenaikan RPM (`ACCEL_RATE_RPM_PER_S`)
+  sekarang dikalikan `GEAR_ACCEL_MULT[gearIndex]`. Gigi rendah (1, 2)
+  punya multiplier lebih besar (torsi lebih besar → tarikan lebih berat
+  dan cepat), gigi tinggi (5, 6) multipliernya lebih kecil (tarikan lebih
+  "panjang"/landai, khas top gear). Contoh terukur: dari idle ke
+  3500rpm di gigi 1 butuh ~0.5 detik, di gigi 5 butuh ~1 detik — dua
+  kali lebih lambat, dengan throttle & fisika dasar yang sama persis.
+- **RPM dip saat shift** (`triggerShiftDip`) — begitu gearbox benar-benar
+  berpindah gigi (auto ATAU manual, dipanggil dari `stepGear`/`shiftUp`/
+  `shiftDown` di `engine-state.js`), RPM berhenti mengejar target
+  throttle selama ±220ms dan malah "jatuh" dulu ke sekitar 68% dari RPM
+  sebelum shift (`SHIFT_DIP_FRACTION`), meniru kopling terlepas sesaat
+  dari mesin. Setelah dip selesai, RPM lanjut mengejar target throttle
+  seperti biasa dari titik itu. Efek ini yang membuat shift kerasa
+  sebagai satu kejadian (jeda + RPM turun sesaat), bukan cuma nomor
+  gigi yang diam-diam berganti di atas RPM yang mulus. Indikator gear di
+  gauge (`data-shifting="true"`) sekarang menyala persis selama dip ini
+  berlangsung, bukan sekadar mengikuti timer shift-lock kosong.
+- Manual shift memicu dip yang sama seperti auto — sengaja begitu,
+  karena kopling/synchro tetap ada fisiknya walau perpindahan gigi
+  dipicu manual oleh tombol SHIFT, bukan otomatis oleh RPM.
+
 ## Perpindahan gigi (`engine-state.js` — `stepGear`)
 
 Gear tidak lagi murni hasil lookup `gearForRpm(rpm)` seperti tahap

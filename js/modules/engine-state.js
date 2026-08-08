@@ -23,6 +23,11 @@
  * and a shift-lock delay (a brief window after any shift during which
  * no further shift is allowed) — see stepGear() below for why a plain
  * "gearForRpm(rpm)" lookup causes visible flicker at the boundaries.
+ * On top of the lock, every actual shift also tells RPMSimulator to
+ * dip RPM briefly (RPMSimulator.triggerShiftDip()) and to scale
+ * acceleration by the newly engaged gear (RPMSimulator.setGear()) —
+ * see rpm-simulator.js for why a shift needs to visibly cost something
+ * in RPM, not just silently swap the gear label.
  * -----------------------------------------------------------------------
  */
 
@@ -145,12 +150,16 @@ const EngineState = (() => {
     if (current.upAt !== null && rpm >= current.upAt && gearIndex < MAX_GEAR_INDEX) {
       gearIndex += 1;
       engageShiftLock();
+      RPMSimulator.setGear(gearIndex);
+      RPMSimulator.triggerShiftDip();
       return;
     }
 
     if (current.downAt !== null && rpm < current.downAt && gearIndex > 1) {
       gearIndex -= 1;
       engageShiftLock();
+      RPMSimulator.setGear(gearIndex);
+      RPMSimulator.triggerShiftDip();
       return;
     }
 
@@ -161,6 +170,11 @@ const EngineState = (() => {
     if (gearIndex === 1 && rpm <= IDLE_RPM + 50) {
       gearIndex = 0;
       engageShiftLock();
+      RPMSimulator.setGear(gearIndex);
+      // No triggerShiftDip() here on purpose: coasting to a stop and
+      // settling into neutral isn't a driver-initiated shift event, it's
+      // just running out of RPM — there's no clutch snap to model, RPM
+      // is already right at idle with nowhere further to dip.
     }
   }
 
@@ -204,7 +218,12 @@ const EngineState = (() => {
     state.gearIndex = gearIndex;
     state.gear = GEARS[gearIndex].label;
     state.gearMode = gearMode;
-    state.shifting = frame.engineOn && isShiftLocked();
+    // "shifting" reflects the actual RPM dip happening in RPMSimulator
+    // (frame.shifting) OR-ed with our own shift-lock window — the two
+    // usually overlap almost exactly (dip is 220ms, lock is 260ms) but
+    // using both means the UI never shows "not shifting" for the few ms
+    // where one has ended and the other hasn't quite caught up.
+    state.shifting = frame.engineOn && (frame.shifting || isShiftLocked());
     state.canShiftUp = frame.engineOn && gearIndex < MAX_GEAR_INDEX && !isShiftLocked();
     state.canShiftDown = frame.engineOn && gearIndex > 0 && !isShiftLocked();
 
@@ -257,23 +276,30 @@ const EngineState = (() => {
   /** Manual upshift. No-op (and shift-lock still respected) if already
    *  in top gear, engine off, or mid-shift-lock from a previous shift —
    *  same physical shift-lock timer auto mode uses, so manual shifts
-   *  feel exactly as deliberate/paced as automatic ones. */
+   *  feel exactly as deliberate/paced as automatic ones. Also triggers
+   *  the same RPM dip as an automatic shift — a manual paddle/button
+   *  shift still has a clutch/synchro moment in real life. */
   function shiftUp() {
     if (!state.engineOn || isShiftLocked()) return getState();
     if (gearIndex >= MAX_GEAR_INDEX) return getState();
     gearIndex += 1;
     engageShiftLock();
+    RPMSimulator.setGear(gearIndex);
+    RPMSimulator.triggerShiftDip();
     return getState();
   }
 
   /** Manual downshift. Never shifts below 1st into neutral from the
    *  paddle/button — neutral is only reached by coasting to idle in 1st,
-   *  matching how a real sequential shifter behaves. */
+   *  matching how a real sequential shifter behaves. Also dips RPM, same
+   *  as shiftUp(). */
   function shiftDown() {
     if (!state.engineOn || isShiftLocked()) return getState();
     if (gearIndex <= 1) return getState();
     gearIndex -= 1;
     engageShiftLock();
+    RPMSimulator.setGear(gearIndex);
+    RPMSimulator.triggerShiftDip();
     return getState();
   }
 
