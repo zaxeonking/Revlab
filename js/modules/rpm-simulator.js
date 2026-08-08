@@ -249,5 +249,6 @@ const RPMSimulator = (() => {
     MAX_RPM,
     REDLINE_RPM,
     REV_LIMIT_RPM,
+    SHIFT_DIP_FRACTION,
   };
 })();

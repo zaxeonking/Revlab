@@ -243,6 +243,39 @@
       </div>
     </button>
 
+    <!-- ============ MOBILE GEAR SHIFTER ============ -->
+    <!-- Hidden on desktop via responsive.css. Stacked directly ABOVE the
+         gas pedal (same fixed corner) so a thumb can shift and throttle
+         without the hand ever leaving that corner of the screen — the
+         SHIFT buttons living inside the telemetry panel are out of easy
+         reach mid-drive on a phone. -->
+    <div class="mobile-shifter" id="mobileShifter">
+      <button
+        id="mobileGearModeBtn"
+        class="mobile-shifter__mode"
+        type="button"
+        aria-label="Ganti mode perpindahan gigi, AUTO atau MANUAL"
+      >AUTO</button>
+
+      <button
+        id="mobileShiftUpBtn"
+        class="mobile-shifter__btn"
+        type="button"
+        disabled
+        aria-label="Pindah gigi naik"
+      >▲</button>
+
+      <div class="mobile-shifter__gear" id="mobileGearValue" aria-label="Gigi saat ini">N</div>
+
+      <button
+        id="mobileShiftDownBtn"
+        class="mobile-shifter__btn"
+        type="button"
+        disabled
+        aria-label="Pindah gigi turun"
+      >▼</button>
+    </div>
+
   </div>
 
   <script src="js/modules/gauge.js"></script>

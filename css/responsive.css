@@ -77,4 +77,8 @@
   .throttle-pedal {
     display: flex;
   }
+
+  .mobile-shifter {
+    display: flex;
+  }
 }

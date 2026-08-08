@@ -48,6 +48,12 @@ const UIController = (() => {
       shiftUpBtn: document.getElementById('shiftUpBtn'),
       shiftDownBtn: document.getElementById('shiftDownBtn'),
       gearModeHint: document.getElementById('gearModeHint'),
+
+      mobileShifter: document.getElementById('mobileShifter'),
+      mobileGearModeBtn: document.getElementById('mobileGearModeBtn'),
+      mobileShiftUpBtn: document.getElementById('mobileShiftUpBtn'),
+      mobileShiftDownBtn: document.getElementById('mobileShiftDownBtn'),
+      mobileGearValue: document.getElementById('mobileGearValue'),
     };
   }
 
@@ -131,6 +137,28 @@ const UIController = (() => {
     if (els.shiftUpBtn) els.shiftUpBtn.disabled = state.gearMode !== 'manual' || !state.canShiftUp;
     if (els.shiftDownBtn) els.shiftDownBtn.disabled = state.gearMode !== 'manual' || !state.canShiftDown;
 
+    // Mobile shifter mirrors the desktop gear controls 1:1 — same
+    // disabled/canShift logic, just a second set of DOM nodes docked
+    // above the gas pedal instead of inside the telemetry panel.
+    if (els.mobileGearValue) els.mobileGearValue.textContent = state.gear;
+    if (els.mobileShiftUpBtn) els.mobileShiftUpBtn.disabled = state.gearMode !== 'manual' || !state.canShiftUp;
+    if (els.mobileShiftDownBtn) els.mobileShiftDownBtn.disabled = state.gearMode !== 'manual' || !state.canShiftDown;
+    if (els.mobileGearModeBtn) {
+      els.mobileGearModeBtn.textContent = state.gearMode === 'manual' ? 'MANUAL' : 'AUTO';
+      els.mobileGearModeBtn.dataset.mode = state.gearMode;
+    }
+    // Keep the desktop AUTO/MANUAL segmented control and its hint text
+    // in sync too — driven here (every frame) rather than only inside
+    // the desktop toggle's own click handler, so switching mode from
+    // the mobile pill (or any future control) can't leave the desktop
+    // panel showing a stale mode.
+    if (els.gearModeToggle) {
+      els.gearModeToggle.querySelectorAll('.segmented__btn').forEach((b) => {
+        b.setAttribute('aria-pressed', b.dataset.mode === state.gearMode ? 'true' : 'false');
+      });
+    }
+    if (els.gearModeHint) els.gearModeHint.textContent = GEAR_MODE_HINTS[state.gearMode] || '';
+
     if (els.throttleReadout) els.throttleReadout.textContent = `${Math.round(state.throttlePercent)}%`;
     if (els.throttleSlider) {
       els.throttleSlider.disabled = !state.engineOn;
@@ -207,11 +235,8 @@ const UIController = (() => {
         if (!btn) return;
         const mode = btn.dataset.mode;
         EngineState.setGearMode(mode);
-
-        els.gearModeToggle.querySelectorAll('.segmented__btn').forEach((b) => {
-          b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
-        });
-        if (els.gearModeHint) els.gearModeHint.textContent = GEAR_MODE_HINTS[mode] || '';
+        // Segmented buttons + hint text now sync from render() on the
+        // next frame, same as every other state-driven UI element.
 
         logLine(mode === 'manual'
           ? 'GEAR MODE → MANUAL — gunakan tombol SHIFT.'
@@ -229,6 +254,35 @@ const UIController = (() => {
 
     if (els.shiftDownBtn) {
       els.shiftDownBtn.addEventListener('click', () => {
+        const before = EngineState.getState().gear;
+        const after = EngineState.shiftDown().gear;
+        if (after !== before) logLine(`SHIFT DOWN — gigi ${before} → ${after}.`);
+      });
+    }
+
+    // Mobile shifter — same EngineState calls as the desktop controls,
+    // just a second set of listeners on the buttons docked by the gas
+    // pedal.
+    if (els.mobileGearModeBtn) {
+      els.mobileGearModeBtn.addEventListener('click', () => {
+        const nextMode = EngineState.getState().gearMode === 'manual' ? 'auto' : 'manual';
+        EngineState.setGearMode(nextMode);
+        logLine(nextMode === 'manual'
+          ? 'GEAR MODE → MANUAL — gunakan tombol SHIFT.'
+          : 'GEAR MODE → AUTO — gearbox kembali mengendalikan sendiri.');
+      });
+    }
+
+    if (els.mobileShiftUpBtn) {
+      els.mobileShiftUpBtn.addEventListener('click', () => {
+        const before = EngineState.getState().gear;
+        const after = EngineState.shiftUp().gear;
+        if (after !== before) logLine(`SHIFT UP — gigi ${before} → ${after}.`);
+      });
+    }
+
+    if (els.mobileShiftDownBtn) {
+      els.mobileShiftDownBtn.addEventListener('click', () => {
         const before = EngineState.getState().gear;
         const after = EngineState.shiftDown().gear;
         if (after !== before) logLine(`SHIFT DOWN — gigi ${before} → ${after}.`);

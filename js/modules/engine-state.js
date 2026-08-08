@@ -36,6 +36,17 @@ const EngineState = (() => {
   const OPERATING_TEMP_C = 92;
   const MAX_BOOST_BAR = 1.4;
   const MAX_SPEED_KMH = 260;
+  // Per-gear speed limiter. Speed used to be derived straight from
+  // rpmFraction with no gear awareness at all — meaning revving in
+  // NEUTRAL visibly moved the speed readout even though no gear is
+  // engaged to actually turn the wheels, and every gear mapped RPM to
+  // speed identically. Index 0 (N) is always 0: neutral disconnects the
+  // engine from the drivetrain, so the needle can spin all it wants
+  // without the car going anywhere. Indices 1–6 are each gear's own
+  // speed ceiling (reached at redline while held in that gear) — a real
+  // per-gear "limiter" in the sense the user asked for: 1st gear simply
+  // cannot produce 6th-gear speeds no matter how hard it's revved.
+  const GEAR_MAX_SPEED_KMH = [0, 45, 85, 130, 175, 215, MAX_SPEED_KMH];
   const KMH_PER_MPH = 1.609344;
 
   const MAX_RPM = RPMSimulator.MAX_RPM;
@@ -51,14 +62,34 @@ const EngineState = (() => {
   // don't downshift back the instant RPM dips 1 rpm below the upshift
   // point, or the transmission would hunt/flicker between two gears
   // forever at a steady-ish RPM.
+  // BUG FIX (gear hunting between 2↔3, and structurally at every
+  // boundary from 2nd gear up): downAt used to be picked independently
+  // of the shift-dip model. Every real upshift calls
+  // RPMSimulator.triggerShiftDip(), which yanks RPM down by
+  // SHIFT_DIP_FRACTION (~32%) the instant the new gear engages. If that
+  // post-shift floor lands BELOW the new gear's downAt, the very next
+  // stepGear() check (as soon as the shift-lock window clears) sees
+  // "RPM below downAt" and immediately shifts back down — which then
+  // dips RPM again, undershoots the gear below's own downAt, and so on.
+  // That's exactly the naik-turun/2-3 hunting bug. Fix: derive downAt
+  // FROM the dip math itself (same SHIFT_DIP_FRACTION RPMSimulator
+  // actually uses, so the two can never drift out of sync again) with
+  // a safety margin, so the post-dip recovery always lands comfortably
+  // above the downshift threshold instead of right on top of it.
+  const DIP_FRACTION = RPMSimulator.SHIFT_DIP_FRACTION;
+  const DOWNSHIFT_SAFETY_MARGIN_RPM = 150;
+  function safeDownAt(prevUpAt) {
+    return Math.round(prevUpAt * (1 - DIP_FRACTION)) - DOWNSHIFT_SAFETY_MARGIN_RPM;
+  }
+
   const GEARS = [
     { label: 'N', upAt: 1200, downAt: null },
     { label: '1', upAt: 2000, downAt: null },
-    { label: '2', upAt: 3500, downAt: 1500 },
-    { label: '3', upAt: 5000, downAt: 2700 },
-    { label: '4', upAt: 6500, downAt: 4000 },
-    { label: '5', upAt: 8000, downAt: 5200 },
-    { label: '6', upAt: null, downAt: 6600 },
+    { label: '2', upAt: 3500, downAt: safeDownAt(2000) },
+    { label: '3', upAt: 5000, downAt: safeDownAt(3500) },
+    { label: '4', upAt: 6500, downAt: safeDownAt(5000) },
+    { label: '5', upAt: 8000, downAt: safeDownAt(6500) },
+    { label: '6', upAt: null, downAt: safeDownAt(8000) },
   ];
   const MAX_GEAR_INDEX = GEARS.length - 1;
 
@@ -227,7 +258,19 @@ const EngineState = (() => {
     state.canShiftUp = frame.engineOn && gearIndex < MAX_GEAR_INDEX && !isShiftLocked();
     state.canShiftDown = frame.engineOn && gearIndex > 0 && !isShiftLocked();
 
-    state.speedKmh = frame.engineOn ? Math.round(rpmFraction * MAX_SPEED_KMH) : 0;
+    // Speed now depends on the ENGAGED GEAR, not raw rpmFraction alone:
+    // gearIndex 0 (N) is hard-locked to 0 regardless of RPM, and every
+    // other gear is capped at its own entry in GEAR_MAX_SPEED_KMH —
+    // see the table above for why.
+    if (frame.engineOn && gearIndex > 0) {
+      const rpmAboveIdleFraction = Math.min(
+        Math.max((frame.rpm - IDLE_RPM) / (MAX_RPM - IDLE_RPM), 0),
+        1
+      );
+      state.speedKmh = Math.round(rpmAboveIdleFraction * GEAR_MAX_SPEED_KMH[gearIndex]);
+    } else {
+      state.speedKmh = 0;
+    }
     state.boostBar = frame.engineOn
       ? Math.round(Math.max(0, frame.throttlePercent / 100 - 0.15) * MAX_BOOST_BAR * 100) / 100
       : 0;
