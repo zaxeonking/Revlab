@@ -41,7 +41,12 @@
 
 const RPMSimulator = (() => {
   // ---- Engine profile (placeholder values, later replaceable) ----
-  const IDLE_RPM = 800;
+  // Resting/idle baseline is 0, not a nonzero idle rpm — this simulator
+  // reads "not on the gas" as 0 on the dial (0 also correctly means
+  // "not moving" for the neutral/speed logic in engine-state.js), so
+  // there's one consistent zero baseline instead of RPM settling at a
+  // nonzero idle number while everything else reads 0.
+  const IDLE_RPM = 0;
   const MAX_RPM = 9000;          // absolute ceiling — matches gauge face (9 x 1000)
   const REDLINE_RPM = 7500;      // visual redline zone start — matches gauge.js REDLINE_START_K
   const REV_LIMIT_RPM = 8800;    // engine's absolute fuel-cut ceiling (top gear / neutral use this)
@@ -318,15 +323,12 @@ const RPMSimulator = (() => {
 
   function start() {
     engineOn = true;
-    // Engine catches at idle immediately (ignition), then simulation
-    // takes over from there — it does not jump straight to a target.
-    if (currentRpm < IDLE_RPM * 0.5) currentRpm = IDLE_RPM * 0.5;
     throttlePercent = 0;
     engagedGearIndex = 0;
     shiftDipUntil = 0;
     // Kick off the start-up flare (see stepStartFlare) — rise above idle
-    // then settle back down, instead of the needle just snapping
-    // straight to 800 and sticking there.
+    // then settle back down to IDLE_RPM (0), instead of the needle
+    // jumping straight to a resting number and sticking there.
     startFlarePhase = 'rise';
     startFlarePhaseUntil = now() + START_FLARE_RISE_MS;
   }
