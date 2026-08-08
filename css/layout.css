@@ -1,0 +1,78 @@
+/* REVLAB — Structural layout (grid skeleton) */
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--border-0);
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  flex-wrap: wrap;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.topbar__status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+/* ---------- Main dashboard grid ---------- */
+.dash {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(220px, 1fr);
+  gap: var(--sp-5);
+  padding: var(--sp-6);
+  align-items: stretch;
+}
+
+.panel--gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--sp-4);
+}
+
+/* ---------- Control strip (footer) ---------- */
+.controls {
+  display: grid;
+  grid-template-columns: 1.2fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6) var(--sp-6);
+  border-top: 1px solid var(--border-0);
+  background: linear-gradient(0deg, var(--bg-1), var(--bg-0));
+}
+
+.controls__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.controls__group--action {
+  align-items: center;
+  text-align: center;
+}
+
+.controls__group--log {
+  min-width: 0;
+}

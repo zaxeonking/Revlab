@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>REVLAB — Racing Engine Sound Simulator</title>
+  <meta name="description" content="REVLAB: simulator suara mesin balap interaktif berbasis browser." />
+
+  <!-- Fonts: Rajdhani (display/technical), JetBrains Mono (telemetry digits) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+<body>
+
+  <div class="app" id="app">
+
+    <!-- ============ TOP BAR ============ -->
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__logo">REVLAB</span>
+        <span class="topbar__tagline">ENGINE SOUND SIMULATOR</span>
+      </div>
+
+      <div class="topbar__status">
+        <div class="status-chip" id="engineStatusChip" data-state="off">
+          <span class="status-chip__dot"></span>
+          <span class="status-chip__label" id="engineStatusLabel">ENGINE OFF</span>
+        </div>
+        <div class="status-chip status-chip--muted">
+          <span class="status-chip__label" id="audioStatusLabel">AUDIO ENGINE: NOT INITIALIZED</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============ MAIN GRID ============ -->
+    <main class="dash">
+
+      <!-- LEFT PANEL: Engine / Vehicle Select -->
+      <section class="panel panel--engine" aria-label="Engine selection">
+        <h2 class="panel__title">POWERTRAIN</h2>
+
+        <div class="field">
+          <label class="field__label" for="engineSelect">ENGINE PROFILE</label>
+          <select id="engineSelect" class="field__select" disabled>
+            <option>— Belum ada profil terpasang —</option>
+          </select>
+          <p class="field__hint">Profil mesin &amp; sample suara akan ditambahkan pada tahap berikutnya.</p>
+        </div>
+
+        <div class="field">
+          <span class="field__label">CYLINDER LAYOUT</span>
+          <div class="field__value field__value--mono">— — —</div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">REDLINE</span>
+          <div class="field__value field__value--mono">— — — <small>RPM</small></div>
+        </div>
+      </section>
+
+      <!-- CENTER: HERO — RPM GAUGE -->
+      <section class="panel panel--gauge" aria-label="Tachometer">
+        <div class="gauge-wrap">
+          <svg id="rpmGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="RPM gauge, idle">
+            <!-- Outer bezel -->
+            <circle class="gauge__bezel" cx="150" cy="150" r="142" />
+
+            <!-- Tick arc groups injected by gauge.js -->
+            <g id="gaugeTicks"></g>
+
+            <!-- Redline arc (drawn statically, values placeholder) -->
+            <path id="gaugeRedline" class="gauge__redline-arc" d="" />
+
+            <!-- Needle -->
+            <g id="gaugeNeedle" class="gauge__needle-group">
+              <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
+              <circle cx="150" cy="150" r="9" class="gauge__hub" />
+            </g>
+          </svg>
+
+          <div class="gauge__readout">
+            <span class="gauge__rpm-value" id="rpmValue">0</span>
+            <span class="gauge__rpm-unit">RPM × 1000</span>
+          </div>
+
+          <div class="redline-indicator" id="redlineIndicator" data-active="false" aria-live="polite">
+            <span class="redline-indicator__dot"></span>
+            <span class="redline-indicator__label">REDLINE</span>
+          </div>
+
+          <div class="gear-indicator" id="gearIndicator" aria-label="Current gear">
+            <span class="gear-indicator__value" id="gearValue">N</span>
+          </div>
+        </div>
+
+        <p class="gauge__caption" id="gaugeCaption">Mesin mati. Tekan START ENGINE untuk mengaktifkan telemetri.</p>
+      </section>
+
+      <!-- RIGHT PANEL: Telemetry -->
+      <section class="panel panel--telemetry" aria-label="Telemetry">
+        <h2 class="panel__title">TELEMETRY</h2>
+
+        <ul class="telemetry-list">
+          <li class="telemetry-item">
+            <span class="telemetry-item__label">THROTTLE</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="throttleReadout">0%</span>
+          </li>
+          <li class="telemetry-item">
+            <span class="telemetry-item__label">SPEED</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="speedReadout">0 <small>KM/H</small></span>
+          </li>
+          <li class="telemetry-item">
+            <span class="telemetry-item__label">ENGINE TEMP</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="tempReadout">24 <small>°C</small></span>
+          </li>
+          <li class="telemetry-item">
+            <span class="telemetry-item__label">BOOST / PRESSURE</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="boostReadout">0.00 <small>BAR</small></span>
+          </li>
+          <li class="telemetry-item">
+            <span class="telemetry-item__label">GEAR</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="gearReadout">N</span>
+          </li>
+        </ul>
+
+        <p class="panel__note" id="telemetryNote">Nilai di atas dihitung dari input throttle (state JS, bukan angka acak). Siap digantikan data simulator mesin sungguhan.</p>
+      </section>
+
+    </main>
+
+    <!-- ============ CONTROL STRIP ============ -->
+    <footer class="controls">
+
+      <div class="controls__group">
+        <label class="field__label" for="throttleSlider">THROTTLE INPUT</label>
+        <input
+          type="range"
+          id="throttleSlider"
+          class="throttle-slider"
+          min="0" max="100" value="0" step="1"
+          disabled
+          aria-describedby="throttleReadout"
+        />
+      </div>
+
+      <div class="controls__group controls__group--action">
+        <button id="startEngineBtn" class="btn btn--primary" type="button">
+          START ENGINE
+        </button>
+        <p class="controls__note" id="controlsNote">Audio mesin belum diimplementasikan — tombol ini mengendalikan state telemetri.</p>
+      </div>
+
+      <div class="controls__group controls__group--log">
+        <span class="field__label">SYSTEM LOG</span>
+        <div class="log" id="systemLog" role="log" aria-live="polite">
+          <p class="log__line">[BOOT] REVLAB UI foundation loaded.</p>
+        </div>
+      </div>
+
+    </footer>
+
+  </div>
+
+  <script src="js/modules/gauge.js"></script>
+  <script src="js/modules/rpm-simulator.js"></script>
+  <script src="js/modules/engine-state.js"></script>
+  <script src="js/modules/audio-engine.js"></script>
+  <script src="js/modules/ui-controller.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

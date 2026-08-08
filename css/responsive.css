@@ -1,0 +1,65 @@
+/* REVLAB — Responsive adjustments */
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1024px) {
+  .dash {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "gauge gauge"
+      "engine telemetry";
+    gap: var(--sp-4);
+    padding: var(--sp-5);
+  }
+
+  .panel--gauge   { grid-area: gauge; }
+  .panel--engine  { grid-area: engine; }
+  .panel--telemetry { grid-area: telemetry; }
+
+  .controls {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+  }
+
+  .controls__group--action {
+    order: -1;
+  }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+  .topbar {
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .topbar__status {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dash {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "gauge"
+      "engine"
+      "telemetry";
+    padding: var(--sp-4);
+    gap: var(--sp-4);
+  }
+
+  .gauge-wrap {
+    width: min(80vw, 260px);
+  }
+
+  .fs-2xl,
+  .gauge__rpm-value {
+    font-size: var(--fs-xl);
+  }
+
+  .controls {
+    padding: var(--sp-4);
+  }
+
+  .log {
+    max-height: 64px;
+  }
+}

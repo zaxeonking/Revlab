@@ -1,0 +1,434 @@
+/* REVLAB — Components */
+
+/* ---------- Brand ---------- */
+.topbar__logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-0);
+}
+
+.topbar__tagline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+/* ---------- Status chip ---------- */
+.status-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+}
+
+.status-chip__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-1);
+}
+
+.status-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-2);
+  box-shadow: none;
+}
+
+.status-chip[data-state="off"] .status-chip__dot {
+  background: var(--accent-danger);
+}
+
+.status-chip[data-state="idle"] .status-chip__dot {
+  background: var(--accent-ok);
+  box-shadow: 0 0 8px rgba(52, 209, 124, 0.6);
+}
+
+.status-chip[data-state="redline"] .status-chip__dot {
+  background: var(--accent-danger);
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+}
+
+.status-chip[data-state="redline"] .status-chip__label {
+  color: var(--accent-danger);
+}
+
+.status-chip--muted {
+  opacity: 0.7;
+}
+
+/* ---------- Panel ---------- */
+.panel {
+  background: var(--bg-1);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.panel__title {
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-1);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border-0);
+}
+
+.panel__note {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ---------- Fields ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.field__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+.field__select {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  color: var(--text-1);
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.field__hint {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.field__value {
+  font-size: var(--fs-lg);
+  color: var(--text-0);
+}
+
+.field__value--mono {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+}
+
+/* ---------- Gauge (signature element) ---------- */
+.gauge-wrap {
+  position: relative;
+  width: min(100%, 300px);
+  aspect-ratio: 1 / 1;
+}
+
+.gauge {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.gauge__bezel {
+  fill: var(--bg-2);
+  stroke: var(--border-1);
+  stroke-width: 2;
+}
+
+.gauge__tick {
+  stroke: var(--text-2);
+  stroke-width: 2;
+}
+
+.gauge__tick--major {
+  stroke: var(--text-1);
+  stroke-width: 3;
+}
+
+.gauge__tick-label {
+  fill: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-anchor: middle;
+}
+
+.gauge__redline-arc {
+  fill: none;
+  stroke: var(--accent-amber);
+  stroke-width: 4;
+  opacity: 0.8;
+}
+
+.gauge__needle-group {
+  transform-origin: 150px 150px;
+  transform: rotate(0deg);
+  /* No CSS transition here on purpose: RPMSimulator updates the needle
+     angle every requestAnimationFrame tick with its own physics-based
+     smoothing (engine inertia). A CSS transition on top would fight
+     that and introduce a second, uncontrolled layer of lag. */
+}
+
+.gauge__needle {
+  stroke: var(--accent-cyan);
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(41, 224, 232, 0.5));
+}
+
+.gauge__hub {
+  fill: var(--bg-0);
+  stroke: var(--accent-cyan);
+  stroke-width: 2;
+}
+
+.gauge__readout {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.gauge__rpm-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--text-0);
+  line-height: 1;
+}
+
+.gauge__rpm-unit {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  letter-spacing: var(--tracking-wide);
+}
+
+.gauge__caption {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  max-width: 32ch;
+}
+
+/* ---------- Redline indicator (warning lamp above the gauge) ---------- */
+.redline-indicator {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-0);
+  background: var(--bg-2);
+}
+
+.redline-indicator__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-amber-dim);
+}
+
+.redline-indicator__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-2);
+}
+
+.redline-indicator[data-active="true"] {
+  border-color: var(--accent-danger);
+  background: rgba(255, 77, 77, 0.12);
+}
+
+.redline-indicator[data-active="true"] .redline-indicator__dot {
+  background: var(--accent-danger);
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+}
+
+.redline-indicator[data-active="true"] .redline-indicator__label {
+  color: var(--accent-danger);
+}
+
+/* ---------- Gear indicator (badge on the gauge face) ---------- */
+.gear-indicator {
+  position: absolute;
+  top: 14%;
+  right: 10%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-1);
+  background: var(--bg-2);
+}
+
+.gear-indicator__value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  color: var(--accent-cyan);
+  line-height: 1;
+}
+
+/* ---------- Telemetry list ---------- */
+.telemetry-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.telemetry-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+}
+
+.telemetry-item__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  letter-spacing: var(--tracking-wide);
+}
+
+.telemetry-item__value {
+  font-size: var(--fs-md);
+  color: var(--text-0);
+}
+
+.telemetry-item__value--mono {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+}
+
+/* ---------- Throttle slider ---------- */
+.throttle-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-cyan-dim), var(--accent-amber-dim));
+  outline: none;
+}
+
+.throttle-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-0);
+  border: 2px solid var(--accent-cyan);
+  cursor: pointer;
+}
+
+.throttle-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-0);
+  border: 2px solid var(--accent-cyan);
+  cursor: pointer;
+}
+
+.throttle-slider:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wider);
+  font-size: var(--fs-md);
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-1);
+  background: var(--bg-2);
+  color: var(--text-0);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+
+.btn--primary {
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+.btn--primary:not(:disabled):hover {
+  background: var(--accent-amber);
+  color: var(--bg-0);
+}
+
+.btn--danger {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+}
+
+.btn--danger:not(:disabled):hover {
+  background: var(--accent-danger);
+  color: var(--bg-0);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  border-color: var(--border-0);
+  color: var(--text-2);
+}
+
+.controls__note {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  margin-top: var(--sp-1);
+}
+
+/* ---------- System log ---------- */
+.log {
+  background: var(--bg-0);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 84px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.log__line {
+  color: var(--text-1);
+  padding: 2px 0;
+  white-space: nowrap;
+}
+
+.log__line + .log__line {
+  border-top: 1px dashed var(--border-0);
+}

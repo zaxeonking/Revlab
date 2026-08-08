@@ -1,0 +1,83 @@
+/* REVLAB — Base reset & element defaults */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  /* Faint engine-turned texture: subtle radial vignette, not decorative noise */
+  background-image:
+    radial-gradient(ellipse at 50% -10%, rgba(41, 224, 232, 0.05), transparent 55%),
+    radial-gradient(ellipse at 100% 110%, rgba(255, 122, 26, 0.05), transparent 55%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+}
+
+p {
+  margin: 0;
+}
+
+ul, li {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+select, input {
+  font-family: inherit;
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
+svg {
+  display: block;
+}
+
+small {
+  font-size: 0.7em;
+  color: var(--text-2);
+}
+
+/* Visible keyboard focus, kept consistent across controls */
+:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Respect reduced motion preference throughout */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
