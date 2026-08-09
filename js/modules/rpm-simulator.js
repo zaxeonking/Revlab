@@ -104,19 +104,25 @@ const RPMSimulator = (() => {
   // Exactly like a driver briefly lifting off / clutching in, then
   // getting back on the gas in the new gear, with no dead pause at the
   // bottom of the dip in between.
-  // Rate cut hard from the original 6200 → 2200 → this. The dip's
-  // HARSHNESS was never really about how far it dropped (the fractions
-  // below are already shallow for low gears) — it's about how fast it
-  // got there. A dip that reaches even a shallow target almost
-  // instantly still reads as a jolt/hentakan because the RATE OF CHANGE
-  // (jerk) is what the eye picks up, not just the endpoint.
-  const SHIFT_DIP_RATE_RPM_PER_S = 2200;
+  // Rate bumped back up from 2200 → 3200 to keep pace with the much
+  // deeper fractions below — a half-RPM dip at the old slow rate would
+  // take over a second to bottom out, which starts to feel floaty/laggy
+  // rather than a firm kick. At this rate a dip stays under ~0.8s even
+  // for the biggest gap (gear 4) while still moving as one continuous,
+  // visibly-animated slope the whole way down — the "smooth" part isn't
+  // about being slow, it's about never freezing mid-motion (see
+  // dipActive/step() above), which holds regardless of how deep or fast
+  // the dip itself is.
+  const SHIFT_DIP_RATE_RPM_PER_S = 3200;
   // Per-gear dip depth (dip target = currentRpm * (1 - fraction)),
   // indexed by the gear being ENTERED — same indexing as
-  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Shallowed further for
-  // 1st–4th on top of the rate cut above — still enough that a shift
-  // reads as a real event, not so much it feels like a stumble.
-  const GEAR_DIP_FRACTION = [0, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25];
+  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Deepened a lot for
+  // 1st–4th — "nyentak kebelakang setengahnya" was asking for the
+  // needle to visibly kick back roughly HALF its pre-shift value on
+  // these shifts, not the shallow 8–15% from the previous tune (that
+  // read as barely a dip at all once it was smoothed out). 5th/6th
+  // stay more moderate — not the gears in question here.
+  const GEAR_DIP_FRACTION = [0, 0.45, 0.50, 0.45, 0.40, 0.22, 0.28];
 
   // A dip models the clutch briefly interrupting POWER — that only makes
   // sense for a shift that happens while the driver is actually on the
