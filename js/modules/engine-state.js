@@ -113,10 +113,12 @@ const EngineState = (() => {
   // How long (ms) the gearbox "locks" after any shift before it will
   // shift again — models clutch/synchro engagement time. This is what
   // turns an instant snap into a believable brief pause between shifts.
-  // Kept comfortably above RPMSimulator's SHIFT_DIP_MS (450ms) so the
-  // dip always has time to fully settle onto its target before the next
-  // stepGear() check — the safeDownAt() margin above only works if the
-  // dip has actually finished by the time the lock releases.
+  // RPMSimulator's dip now ends dynamically (the instant it reaches its
+  // target — see dipActive in rpm-simulator.js), which for the shallow
+  // low-gear fractions is well under this window, so this lock is
+  // comfortably long enough for the dip to have already finished
+  // settling by the time it releases — the safeDownAt() margin above
+  // only holds if that's true.
   const SHIFT_LOCK_MS = 550;
 
   let state = {
@@ -312,10 +314,11 @@ const EngineState = (() => {
     state.gear = GEARS[gearIndex].label;
     state.gearMode = gearMode;
     // "shifting" reflects the actual RPM dip happening in RPMSimulator
-    // (frame.shifting) OR-ed with our own shift-lock window — the two
-    // usually overlap almost exactly (dip is 450ms, lock is 550ms) but
-    // using both means the UI never shows "not shifting" for the few ms
-    // where one has ended and the other hasn't quite caught up.
+    // (frame.shifting) OR-ed with our own shift-lock window — the dip
+    // now usually finishes well before the 550ms lock does (it ends the
+    // instant it bottoms out, not on a fixed timer), so this OR is what
+    // keeps the indicator lit for the full, longer shift-lock pause
+    // instead of dropping out early once the dip itself is done.
     state.shifting = frame.engineOn && (frame.shifting || isShiftLocked());
     state.canShiftUp = frame.engineOn && gearIndex < MAX_GEAR_INDEX && !isShiftLocked();
     state.canShiftDown = frame.engineOn && gearIndex > 0 && !isShiftLocked();

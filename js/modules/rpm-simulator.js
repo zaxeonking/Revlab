@@ -98,31 +98,18 @@ const RPMSimulator = (() => {
 
   // ---- Shift-dip model ----
   // While a shift dip is active, RPM ignores the normal throttle-chases-
-  // target logic and instead chases DIP_TARGET_RPM at DIP_RATE, then
-  // (once the dip window elapses) resumes normal chasing from wherever
-  // it ended up — exactly like a driver briefly lifting off / clutching
-  // in, then getting back on the gas in the new gear.
-  // Dip window widened and its rate slowed down a lot (was 220ms /
-  // 9000 rpm/s) — that combo was a near-instant cliff-edge drop, which
-  // is the "kasar" (harsh) snap between gears. This stretches the same
-  // dip out into something that reads as a deliberate, smooth clutch
-  // moment instead of a glitchy jump cut. The rate is still fast enough
-  // to fully reach its target within the window even for the biggest
-  // dips (shifting near redline in a high gear) — see stepGear()'s
-  // SHIFT_LOCK_MS in engine-state.js, which was widened to match.
-  const SHIFT_DIP_MS = 450;
-  // Rate cut hard from 6200 → 2200. The dip's HARSHNESS was never
-  // really about how far it dropped (the fractions below already got
-  // shallower for low gears) — it's about how fast it got there. A
-  // dip that reaches even a shallow target almost instantly still
-  // reads as a jolt/hentakan because the RATE OF CHANGE (jerk) is
-  // what the ear/eye picks up, not just the endpoint. At 2200rpm/s
-  // the needle eases into the dip over the dip window instead of
-  // snapping to it — and since isDipping() ends purely on the 450ms
-  // timer (not on "target reached"), it's fine if the slower rate
-  // means the dip doesn't fully reach its target before normal
-  // throttle-chase resumes: that's actually what makes the handoff
-  // feel smooth instead of like it hit a floor and bounced off it.
+  // target logic and instead chases dipTargetRpm at SHIFT_DIP_RATE_RPM_PER_S,
+  // ending the INSTANT it reaches that target (see dipActive/step() above)
+  // — then resumes normal throttle-chasing from wherever it ended up.
+  // Exactly like a driver briefly lifting off / clutching in, then
+  // getting back on the gas in the new gear, with no dead pause at the
+  // bottom of the dip in between.
+  // Rate cut hard from the original 6200 → 2200 → this. The dip's
+  // HARSHNESS was never really about how far it dropped (the fractions
+  // below are already shallow for low gears) — it's about how fast it
+  // got there. A dip that reaches even a shallow target almost
+  // instantly still reads as a jolt/hentakan because the RATE OF CHANGE
+  // (jerk) is what the eye picks up, not just the endpoint.
   const SHIFT_DIP_RATE_RPM_PER_S = 2200;
   // Per-gear dip depth (dip target = currentRpm * (1 - fraction)),
   // indexed by the gear being ENTERED — same indexing as
@@ -162,6 +149,10 @@ const RPMSimulator = (() => {
   const START_FLARE_FALL_RATE_RPM_PER_S = 1900;
   const START_FLARE_CANCEL_THROTTLE = 5; // % — real gas input cancels the flare
 
+  // Safety ceiling only — see dipActive below for why the dip no longer
+  // runs on a fixed timer.
+  const SHIFT_DIP_MAX_MS = 450;
+
   const MAX_DT_S = 0.05; // clamp huge gaps (e.g. tab was backgrounded) so physics doesn't jump
 
   // ---- Simulation state (the only place RPM actually lives) ----
@@ -171,8 +162,21 @@ const RPMSimulator = (() => {
   let revLimiting = false;
   let engagedGearIndex = 0; // 0 = neutral, mirrors EngineState's gear index
 
-  let shiftDipUntil = 0;   // performance.now()-style timestamp, ms
-  let shiftDipTargetRpm = 0;
+  // Dip used to run on a fixed SHIFT_DIP_MS timer regardless of how far
+  // it actually had to travel. That was fine back when the dip was deep
+  // (0.32) and fast (6200rpm/s) — it genuinely took most of the window
+  // to get there. But once the dip got shallower and slower to fix the
+  // harsh kick, RPM often reached its dip target in well under 450ms and
+  // then just sat FROZEN at the bottom for the rest of the window before
+  // the throttle-chase logic resumed at full accel rate — a flat hold
+  // followed by a sudden snap, which reads as a glitch/blink, not a
+  // smooth dip. Fix: the dip now ends the INSTANT it reaches its target
+  // (dipActive flips off in step() below), so it's always one continuous
+  // downward move with no dead pause. dipDeadlineMs is only a safety
+  // ceiling in case something odd leaves the target unreachable.
+  let dipActive = false;
+  let dipTargetRpm = 0;
+  let dipStartedAt = 0;
 
   let startFlarePhase = null; // null | 'rise' | 'fall'
   let startFlarePhaseUntil = 0;
@@ -232,7 +236,7 @@ const RPMSimulator = (() => {
   }
 
   function isDipping() {
-    return now() < shiftDipUntil;
+    return dipActive;
   }
 
   /** Advances (or ends) the start-up flare state machine for this frame.
@@ -281,8 +285,15 @@ const RPMSimulator = (() => {
       // dip target instead — this is the "clutch disconnected" moment.
       // Deliberately does not honor the rev limiter here either; a dip
       // is already well below the limit by construction.
-      currentRpm = approach(currentRpm, shiftDipTargetRpm, SHIFT_DIP_RATE_RPM_PER_S, dtSeconds);
+      currentRpm = approach(currentRpm, dipTargetRpm, SHIFT_DIP_RATE_RPM_PER_S, dtSeconds);
       currentRpm = Math.min(Math.max(currentRpm, 0), MAX_RPM);
+      // End the dip the instant it actually bottoms out, instead of
+      // waiting for a fixed timer — see dipActive comment above for why
+      // a fixed window left a dead-flat hold at the bottom for shallow/
+      // fast dips. A time-based ceiling still applies as a safety net.
+      if (currentRpm <= dipTargetRpm || (now() - dipStartedAt) >= SHIFT_DIP_MAX_MS) {
+        dipActive = false;
+      }
       return;
     }
 
@@ -354,7 +365,7 @@ const RPMSimulator = (() => {
     engineOn = true;
     throttlePercent = 0;
     engagedGearIndex = 0;
-    shiftDipUntil = 0;
+    dipActive = false;
     // Kick off the start-up flare (see stepStartFlare) — rise above idle
     // then settle back down to IDLE_RPM (0), instead of the needle
     // jumping straight to a resting number and sticking there.
@@ -365,7 +376,7 @@ const RPMSimulator = (() => {
   function stop() {
     engineOn = false;
     throttlePercent = 0;
-    shiftDipUntil = 0;
+    dipActive = false;
     startFlarePhase = null;
     // currentRpm is intentionally left as-is: it will coast down to 0
     // frame by frame via step(), not reset instantly.
@@ -401,8 +412,9 @@ const RPMSimulator = (() => {
     const fraction = GEAR_DIP_FRACTION[engagedGearIndex] !== undefined
       ? GEAR_DIP_FRACTION[engagedGearIndex]
       : 0.32;
-    shiftDipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - fraction));
-    shiftDipUntil = now() + SHIFT_DIP_MS;
+    dipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - fraction));
+    dipActive = true;
+    dipStartedAt = now();
   }
 
   function init() {
