@@ -71,7 +71,12 @@ const RPMSimulator = (() => {
   // the flywheel visibly resists spinning up rather than snapping to
   // target, especially noticeable in the higher gears once
   // GEAR_ACCEL_MULT below has less multiplier left to compensate with.
-  const ACCEL_RATE_RPM_PER_S = 3100; // gear-1 baseline (see GEAR_ACCEL_MULT)
+  // Bumped back up from 3100: that tune leaned too far into a
+  // floaty/underpowered feel ("kurang berat tarikannya") instead of
+  // heavy-against-real-mass. This keeps the flywheel resisting the
+  // instant snap-to-target, but with enough base punch that low gears
+  // read as torquey rather than gutless.
+  const ACCEL_RATE_RPM_PER_S = 3450; // gear-1 baseline (see GEAR_ACCEL_MULT)
   // Lowered a lot from the previous tune: releasing the throttle used to
   // snap RPM back down at 3000 rpm/s, which read as an abrupt cut rather
   // than an engine coasting down under its own compression/engine-braking.
@@ -89,7 +94,7 @@ const RPMSimulator = (() => {
   // gears keep (roughly) their punch even with the lower baseline above,
   // while top gears get noticeably flatter/heavier so the "long pull" of
   // a high gear actually feels like it's working against something.
-  const GEAR_ACCEL_MULT = [1.35, 1.85, 1.40, 1.05, 0.78, 0.60, 0.46];
+  const GEAR_ACCEL_MULT = [1.35, 2.30, 1.65, 1.20, 0.85, 0.60, 0.46];
 
   // ---- Shift-dip model ----
   // While a shift dip is active, RPM ignores the normal throttle-chases-
@@ -107,7 +112,18 @@ const RPMSimulator = (() => {
   // SHIFT_LOCK_MS in engine-state.js, which was widened to match.
   const SHIFT_DIP_MS = 450;
   const SHIFT_DIP_RATE_RPM_PER_S = 6200;
-  const SHIFT_DIP_FRACTION = 0.32;     // dip target = currentRpm * (1 - this)
+  // Per-gear dip depth (dip target = currentRpm * (1 - fraction)),
+  // indexed by the gear being ENTERED — same indexing as
+  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Used to be one flat
+  // 0.32 for every shift, which made every upshift kick the needle
+  // down by the same harsh amount regardless of gear — most noticeable
+  // (and most complained about) low in the box, where shifts happen
+  // more often. Now it ramps up with gear: 1st–4th dip shallower and
+  // recover faster, 5th/6th stay close to the old depth (a big,
+  // dramatic drop still suits a near-redline top-gear shift). Index 0
+  // is unused — Neutral→1st is a standing-start engagement, not a
+  // shift, and skips the dip entirely (see stepGear() in engine-state.js).
+  const GEAR_DIP_FRACTION = [0, 0.14, 0.17, 0.20, 0.23, 0.28, 0.32];
 
   // A dip models the clutch briefly interrupting POWER — that only makes
   // sense for a shift that happens while the driver is actually on the
@@ -369,7 +385,10 @@ const RPMSimulator = (() => {
     // artificial dip — RPM just keeps following its existing decel curve
     // through the gear change. See SHIFT_DIP_THROTTLE_THRESHOLD above.
     if (throttlePercent < SHIFT_DIP_THROTTLE_THRESHOLD) return;
-    shiftDipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - SHIFT_DIP_FRACTION));
+    const fraction = GEAR_DIP_FRACTION[engagedGearIndex] !== undefined
+      ? GEAR_DIP_FRACTION[engagedGearIndex]
+      : 0.32;
+    shiftDipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - fraction));
     shiftDipUntil = now() + SHIFT_DIP_MS;
   }
 
@@ -391,6 +410,6 @@ const RPMSimulator = (() => {
     MAX_RPM,
     REDLINE_RPM,
     REV_LIMIT_RPM,
-    SHIFT_DIP_FRACTION,
+    GEAR_DIP_FRACTION,
   };
 })();

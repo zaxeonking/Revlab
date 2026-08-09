@@ -76,20 +76,27 @@ const EngineState = (() => {
   // actually uses, so the two can never drift out of sync again) with
   // a safety margin, so the post-dip recovery always lands comfortably
   // above the downshift threshold instead of right on top of it.
-  const DIP_FRACTION = RPMSimulator.SHIFT_DIP_FRACTION;
+  const GEAR_DIP_FRACTION = RPMSimulator.GEAR_DIP_FRACTION;
   const DOWNSHIFT_SAFETY_MARGIN_RPM = 150;
-  function safeDownAt(prevUpAt) {
-    return Math.round(prevUpAt * (1 - DIP_FRACTION)) - DOWNSHIFT_SAFETY_MARGIN_RPM;
+  // enteringGearIndex = which gear's dip fraction applies (the gear you
+  // land IN after the upshift that this downAt is guarding against —
+  // e.g. GEARS[2].downAt uses the dip fraction for ENTERING 2nd, since
+  // that's the dip whose post-shift floor this threshold has to clear).
+  function safeDownAt(prevUpAt, enteringGearIndex) {
+    const fraction = GEAR_DIP_FRACTION[enteringGearIndex] !== undefined
+      ? GEAR_DIP_FRACTION[enteringGearIndex]
+      : 0.32;
+    return Math.round(prevUpAt * (1 - fraction)) - DOWNSHIFT_SAFETY_MARGIN_RPM;
   }
 
   const GEARS = [
     { label: 'N', upAt: 1200, downAt: null },
     { label: '1', upAt: 2000, downAt: null },
-    { label: '2', upAt: 3500, downAt: safeDownAt(2000) },
-    { label: '3', upAt: 5000, downAt: safeDownAt(3500) },
-    { label: '4', upAt: 6500, downAt: safeDownAt(5000) },
-    { label: '5', upAt: 8000, downAt: safeDownAt(6500) },
-    { label: '6', upAt: null, downAt: safeDownAt(8000) },
+    { label: '2', upAt: 3500, downAt: safeDownAt(2000, 2) },
+    { label: '3', upAt: 5000, downAt: safeDownAt(3500, 3) },
+    { label: '4', upAt: 6500, downAt: safeDownAt(5000, 4) },
+    { label: '5', upAt: 8000, downAt: safeDownAt(6500, 5) },
+    { label: '6', upAt: null, downAt: safeDownAt(8000, 6) },
   ];
   const MAX_GEAR_INDEX = GEARS.length - 1;
 
@@ -204,10 +211,21 @@ const EngineState = (() => {
     const current = GEARS[gearIndex];
 
     if (current.upAt !== null && rpm >= current.upAt && gearIndex < MAX_GEAR_INDEX) {
+      const enteringFromNeutral = gearIndex === 0;
       gearIndex += 1;
-      engageShiftLock();
       RPMSimulator.setGear(gearIndex);
-      RPMSimulator.triggerShiftDip();
+      if (enteringFromNeutral) {
+        // Engaging 1st from a standing start isn't a shift BETWEEN two
+        // already-spinning gears — there's no established drivetrain
+        // motion to interrupt, so it shouldn't cost the same
+        // clutch/synchro jeda (pause) or RPM dip a real gear-to-gear
+        // shift does. Gas it and it's straight into 1st; the normal
+        // shift-lock/dip machinery only kicks in starting with the
+        // 1st→2nd shift and up.
+      } else {
+        engageShiftLock();
+        RPMSimulator.triggerShiftDip();
+      }
       return;
     }
 
