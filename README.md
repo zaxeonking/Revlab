@@ -296,6 +296,48 @@ sumber eksternal. Karena `engine-state.js` hanya `subscribe()` ke
 `RPMSimulator` dan menurunkan telemetri lain secara murni fungsional,
 tidak ada file UI yang perlu disentuh.
 
+## PERFORMANCE MODE (`performance-mode.js`)
+
+Panel baru — tombol **PERFORMANCE MODE** (di bawah VEHICLE SETUP) membuka
+modal berisi 7 readout (SPEED, RPM, TORQUE, POWER, BOOST, THROTTLE, GEAR)
+dan 4 grafik realtime:
+
+- **Speed over time** / **RPM over time** — grafik garis waktu-berjalan
+  (rolling window 15 detik), digambar dari buffer yang diisi tiap frame
+  `EngineState.subscribe()` selama panel terbuka.
+- **Torque curve** / **Power curve** — kurva referensi full-throttle
+  (idle→max RPM) dari `EngineState.getTorqueCurve()`, dengan titik penanda
+  di posisi RPM/torque/power AKTUAL saat itu (bisa di bawah kurva kalau
+  throttle tidak penuh).
+
+Semua angka berasal dari `EngineState` — modul ini tidak memiliki logika
+simulasi sendiri, hanya buffer riwayat + rendering `<canvas>` 2D murni
+(tanpa library chart).
+
+### Torque & Power
+
+Sebelumnya VEHICLE SETUP punya field Torque/Engine Power tapi keduanya
+cuma memengaruhi laju akselerasi RPM — tidak ada angka output Nm/HP
+sungguhan. Sekarang `engine-state.js` punya kurva torsi berbentuk
+naik→puncak→turun-landai (puncak di ~42% rentang idle→max RPM), diskalakan
+oleh Torque VEHICLE SETUP dan posisi throttle saat ini. Power (HP/kW)
+diturunkan langsung dari Torque × RPM (bukan input terpisah), sama seperti
+hubungan mesin sungguhan.
+
+### Kontrol simulasi: START / PAUSE / RESET
+
+Tiga tombol di footer panel mengontrol simulasi yang SAMA dengan tombol
+START ENGINE di kokpit utama (bukan simulasi paralel terpisah):
+
+- **START** — menyalakan mesin (jika mati) atau melanjutkan (jika sedang
+  PAUSE).
+- **PAUSE** — `RPMSimulator.pause()` membekukan seluruh loop fisika di
+  tempat: setiap gauge, readout, dan grafik di seluruh REVLAB berhenti
+  bergerak bersamaan, bukan cuma panel ini.
+- **RESET** — `RPMSimulator.reset()` + reset gearbox/speed internal
+  `EngineState` ke kondisi bersih (mesin mati, RPM 0, gigi N, speed 0),
+  dan mengosongkan buffer riwayat grafik.
+
 ## Tahap berikutnya (belum dikerjakan)
 
 - Implementasi `AudioEngine` dengan `AudioContext`, sample/oscillator

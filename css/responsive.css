@@ -161,4 +161,12 @@
   .modal__actions .btn {
     width: 100%;
   }
+
+  .perf-graphs {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-sim-state {
+    text-align: center;
+  }
 }

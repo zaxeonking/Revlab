@@ -64,6 +64,77 @@ const EngineState = (() => {
   const BASELINE_POWER_HP = 420;
   const BASELINE_TORQUE_NM = 430;
 
+  // ---- PERFORMANCE MODE: torque / power model --------------------------
+  // REVLAB never had an actual output-torque or power number before —
+  // VEHICLE SETUP's Torque/Engine Power fields only fed into the
+  // accel-rate blend above (see applyVehicleSetup()). PERFORMANCE MODE
+  // needs a real, RPM-dependent torque curve to plot and to derive
+  // instantaneous Power (kW comes straight from Torque × RPM, it isn't an
+  // independent input). Kept deterministic like everything else here —
+  // a fixed-shape curve (rise → peak → gentle fall), scaled by whatever
+  // peak torque VEHICLE SETUP currently has dialed in, and by throttle
+  // position (a part-throttle point sits proportionally below the curve,
+  // same as a real dyno pull at less than WOT).
+  //
+  // Peak torque sits at ~42% of the way from idle to max RPM — a
+  // plausible naturally-aspirated placement (mirrors why 3rd/4th gear
+  // upshift fractions in buildGears() land in a similar band). Below
+  // that the curve rises with a soft power curve (torque builds as RPM
+  // comes on cam); above it, torque falls off gradually toward redline/
+  // max the way a real engine's volumetric efficiency drops at high RPM,
+  // never to zero.
+  const TORQUE_PEAK_FRACTION = 0.42;
+  const TORQUE_AT_IDLE_FRACTION = 0.28;   // fraction of peak torque available right off idle
+  const TORQUE_AT_MAX_FRACTION = 0.55;    // fraction of peak torque still available at max rpm
+  // Below this throttle %, the curve is still shown at full value on the
+  // reference graph (it's an engine property, not a moment-in-time
+  // reading), but the actual instantaneous torque/power readouts blend
+  // toward a low idle-load floor so the numbers don't read "full engine
+  // torque" while just sitting there blipping the throttle.
+  const TORQUE_THROTTLE_FLOOR = 0.15;
+
+  /** Torque available at a given RPM, AT FULL THROTTLE, as a fraction of
+   *  peak torque (0..~1). Pure function of RPM shape — this is "the
+   *  engine's torque curve" independent of current throttle position. */
+  function torqueCurveFraction(rpm) {
+    const span = Math.max(1, MAX_RPM - IDLE_RPM);
+    const x = clamp((rpm - IDLE_RPM) / span, 0, 1);
+    if (x <= TORQUE_PEAK_FRACTION) {
+      const t = x / TORQUE_PEAK_FRACTION;
+      // Ease-out rise from idle fraction up to 1.0 at the peak — sqrt
+      // shape builds quickly off idle then rounds off approaching peak,
+      // instead of a plain straight ramp.
+      return TORQUE_AT_IDLE_FRACTION + (1 - TORQUE_AT_IDLE_FRACTION) * Math.sqrt(t);
+    }
+    const t = (x - TORQUE_PEAK_FRACTION) / (1 - TORQUE_PEAK_FRACTION);
+    // Gentle fall from peak to the max-rpm floor.
+    return 1 - (1 - TORQUE_AT_MAX_FRACTION) * (t * t * (3 - 2 * t)); // smoothstep falloff
+  }
+
+  /** Full torque (Nm) / power (hp, kW) curve across the current idle→max
+   *  RPM range, sampled at `steps` points, at full throttle — the
+   *  reference curve PERFORMANCE MODE's Torque/Power graphs plot. Peak
+   *  torque comes from VEHICLE SETUP's torqueNm; power is derived FROM
+   *  torque × rpm (not a separate input), same relationship real engines
+   *  have. Recomputed on demand rather than cached, since it only runs
+   *  when a graph redraws (a handful of times/sec at most), not per
+   *  physics tick. */
+  function computeCurve(steps = 40) {
+    const points = [];
+    const span = Math.max(1, MAX_RPM - IDLE_RPM);
+    for (let i = 0; i <= steps; i += 1) {
+      const rpm = IDLE_RPM + (span * i) / steps;
+      const torqueNm = Math.round(peakTorqueNm * torqueCurveFraction(rpm));
+      const powerHp = Math.round((torqueNm * rpm) / 7127);
+      points.push({ rpm: Math.round(rpm), torqueNm, powerHp });
+    }
+    return points;
+  }
+
+  // `let`, not `const`: mirrors VehicleSetup's torqueNm — see
+  // applyVehicleSetup() below.
+  let peakTorqueNm = BASELINE_TORQUE_NM;
+
   // `let`, not `const`: these three mirror whatever VEHICLE SETUP has
   // currently applied (see applyVehicleSetup()) — everything below that
   // used to read RPMSimulator.MAX_RPM etc. as a load-time constant now
@@ -202,6 +273,12 @@ const EngineState = (() => {
     maxRpmK: MAX_RPM / 1000,
     redlineStartK: REDLINE_RPM / 1000,
     maxSpeedKmh: MAX_SPEED_KMH,
+    // PERFORMANCE MODE additions — see torqueCurveFraction()/computeCurve()
+    // above for how these are derived.
+    torqueNm: 0,
+    powerHp: 0,
+    powerKw: 0,
+    paused: false,
   };
 
   // Internal gearbox state, separate from the public snapshot above so
@@ -355,6 +432,27 @@ const EngineState = (() => {
     state.throttlePercent = frame.throttlePercent;
     state.revLimiting = frame.revLimiting;
     state.inRedline = inRedline;
+    state.paused = !!frame.paused;
+
+    // ---- PERFORMANCE MODE: instantaneous torque / power -----------------
+    // Full-throttle curve value at this RPM, blended down toward an idle
+    // load floor by how far off-throttle we currently are — see the
+    // TORQUE_THROTTLE_FLOOR comment above computeCurve() for why this
+    // isn't just "curve value × throttle%" (that would read as ~0 torque
+    // at idle, which isn't right — an idling engine still has torque, it
+    // just isn't being asked to use much of it).
+    if (frame.engineOn) {
+      const throttleFrac = frame.throttlePercent / 100;
+      const loadFactor = TORQUE_THROTTLE_FLOOR + (1 - TORQUE_THROTTLE_FLOOR) * throttleFrac;
+      const curveFrac = torqueCurveFraction(frame.rpm);
+      state.torqueNm = Math.round(peakTorqueNm * curveFrac * loadFactor);
+      state.powerHp = Math.round((state.torqueNm * frame.rpm) / 7127);
+      state.powerKw = Math.round(state.powerHp * 0.7457 * 10) / 10;
+    } else {
+      state.torqueNm = 0;
+      state.powerHp = 0;
+      state.powerKw = 0;
+    }
 
     if (!frame.engineOn) {
       gearIndex = 0;
@@ -452,6 +550,64 @@ const EngineState = (() => {
     return getState();
   }
 
+  /** PERFORMANCE MODE — Pause. Freezes RPMSimulator's loop (see
+   *  rpm-simulator.js pause()) so every derived reading here simply stops
+   *  receiving new frames and holds exactly where it was — gauges, the
+   *  telemetry panel, and PerformanceMode's graphs all freeze together
+   *  with no separate pause plumbing needed in any of them. */
+  function pauseSimulation() {
+    RPMSimulator.pause();
+    state.paused = true;
+    notify();
+    return getState();
+  }
+
+  /** PERFORMANCE MODE — Resume from pause. */
+  function resumeSimulation() {
+    RPMSimulator.resume();
+    state.paused = false;
+    return getState();
+  }
+
+  /** PERFORMANCE MODE — Reset. Hard-resets RPMSimulator (RPM snaps to 0,
+   *  engine off, not a coast-down) AND this module's own gearbox/speed/
+   *  shift-lock state, so a RESET always returns to an identical, known
+   *  baseline — gear N, 0 speed, 0 throttle, no residual shift-lock
+   *  timer left over from before the reset. */
+  function resetSimulation() {
+    RPMSimulator.reset();
+    gearIndex = 0;
+    gearMode = 'auto';
+    shiftLockUntil = 0;
+    displaySpeedKmh = 0;
+    lastSpeedTs = null;
+    state = {
+      ...state,
+      status: 'off',
+      engineOn: false,
+      rpmK: 0,
+      rpm: 0,
+      throttlePercent: 0,
+      gear: 'N',
+      gearIndex: 0,
+      gearMode: 'auto',
+      shifting: false,
+      canShiftUp: false,
+      canShiftDown: false,
+      speedKmh: 0,
+      engineTempC: AMBIENT_TEMP_C,
+      boostBar: 0,
+      inRedline: false,
+      revLimiting: false,
+      torqueNm: 0,
+      powerHp: 0,
+      powerKw: 0,
+      paused: false,
+    };
+    notify();
+    return getState();
+  }
+
   function setThrottle(percent) {
     RPMSimulator.setThrottle(percent);
     return getState();
@@ -526,6 +682,7 @@ const EngineState = (() => {
     REDLINE_RPM = setup.redlineRpm;
     MAX_RPM = setup.maxRpm;
     MAX_SPEED_KMH = setup.topSpeedKmh;
+    peakTorqueNm = setup.torqueNm;
 
     const built = buildGears(IDLE_RPM, REDLINE_RPM, MAX_RPM);
     GEARS = built.gears;
@@ -613,12 +770,16 @@ const EngineState = (() => {
     getState,
     startEngine,
     stopEngine,
+    pauseSimulation,
+    resumeSimulation,
+    resetSimulation,
     setThrottle,
     setGearMode,
     shiftUp,
     shiftDown,
     applyVehicleSetup,
     getDrivetrainSpec,
+    getTorqueCurve: computeCurve,
     getMaxSpeedKmh: () => MAX_SPEED_KMH,
     KMH_PER_MPH,
   };

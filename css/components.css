@@ -960,6 +960,111 @@
   color: var(--bg-0);
 }
 
+/* ---------- PERFORMANCE MODE trigger button ---------- */
+.btn--performance {
+  margin-top: var(--sp-2);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-4);
+  width: 100%;
+}
+
+.btn--performance:hover {
+  background: var(--accent-amber);
+  color: var(--bg-0);
+}
+
+/* ---------- PERFORMANCE MODE panel ---------- */
+.modal--wide {
+  width: min(920px, 100%);
+}
+
+.perf-readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--sp-3);
+}
+
+.perf-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+}
+
+.perf-stat__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+}
+
+.perf-stat__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-cyan);
+  line-height: 1.1;
+}
+
+.perf-stat__unit {
+  margin-left: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+
+.perf-graphs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-4);
+}
+
+.perf-graph {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  background: var(--bg-recess);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+}
+
+.perf-graph__title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+}
+
+.perf-graph__canvas {
+  display: block;
+  width: 100%;
+  height: 130px;
+}
+
+.perf-sim-state {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+}
+
+.perf-sim-state[data-state="running"] {
+  color: var(--accent-ok);
+}
+
+.perf-sim-state[data-state="paused"] {
+  color: var(--accent-amber);
+}
+
+.perf-sim-state[data-state="stopped"] {
+  color: var(--text-2);
+}
+
 /* ---------- VEHICLE SETUP modal ---------- */
 .modal-overlay {
   position: fixed;

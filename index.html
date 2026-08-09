@@ -109,6 +109,12 @@
           class="btn btn--setup"
           type="button"
         >VEHICLE SETUP</button>
+
+        <button
+          id="performanceModeOpenBtn"
+          class="btn btn--performance"
+          type="button"
+        >PERFORMANCE MODE</button>
       </section>
 
       <!-- CENTER: HERO — SPEEDOMETER + TACHOMETER, side by side -->
@@ -388,6 +394,85 @@
       </div>
     </div>
 
+    <!-- ============ PERFORMANCE MODE (modal) ============ -->
+    <!-- All readouts + graphs here are driven live from EngineState (see
+         js/modules/performance-mode.js) — nothing on this panel is
+         hand-typed or static. START / PAUSE / RESET control the SAME
+         underlying simulation as the cockpit's own START ENGINE button
+         (RPMSimulator via EngineState), not a separate parallel sim. -->
+    <div class="modal-overlay" id="performanceModeOverlay" data-open="false" aria-hidden="true">
+      <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="performanceModeTitle">
+        <div class="modal__header">
+          <h2 class="modal__title" id="performanceModeTitle">PERFORMANCE MODE</h2>
+          <button class="modal__close" id="performanceModeCloseBtn" type="button" aria-label="Tutup Performance Mode">✕</button>
+        </div>
+
+        <div class="modal__body">
+
+          <section class="perf-readouts" aria-label="Performance readouts">
+            <div class="perf-stat">
+              <span class="perf-stat__label">SPEED</span>
+              <span class="perf-stat__value" id="perfSpeed">0<small class="perf-stat__unit">KM/H</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">RPM</span>
+              <span class="perf-stat__value" id="perfRpm">0<small class="perf-stat__unit">RPM</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">TORQUE</span>
+              <span class="perf-stat__value" id="perfTorque">0<small class="perf-stat__unit">NM</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">POWER</span>
+              <span class="perf-stat__value" id="perfPower">0<small class="perf-stat__unit">HP</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">BOOST</span>
+              <span class="perf-stat__value" id="perfBoost">0.00<small class="perf-stat__unit">BAR</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">THROTTLE</span>
+              <span class="perf-stat__value" id="perfThrottle">0<small class="perf-stat__unit">%</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">GEAR</span>
+              <span class="perf-stat__value" id="perfGear">N</span>
+            </div>
+          </section>
+
+          <section class="perf-graphs" aria-label="Realtime performance graphs">
+            <div class="perf-graph">
+              <span class="perf-graph__title">SPEED OVER TIME</span>
+              <canvas id="perfGraphSpeed" class="perf-graph__canvas" aria-label="Grafik kecepatan terhadap waktu"></canvas>
+            </div>
+            <div class="perf-graph">
+              <span class="perf-graph__title">RPM OVER TIME</span>
+              <canvas id="perfGraphRpm" class="perf-graph__canvas" aria-label="Grafik RPM terhadap waktu"></canvas>
+            </div>
+            <div class="perf-graph">
+              <span class="perf-graph__title">TORQUE CURVE</span>
+              <canvas id="perfGraphTorque" class="perf-graph__canvas" aria-label="Kurva torsi terhadap RPM"></canvas>
+            </div>
+            <div class="perf-graph">
+              <span class="perf-graph__title">POWER CURVE</span>
+              <canvas id="perfGraphPower" class="perf-graph__canvas" aria-label="Kurva tenaga terhadap RPM"></canvas>
+            </div>
+          </section>
+
+          <p class="field__hint">Semua data (speed, RPM, torque, power) berasal langsung dari simulator (RPMSimulator + EngineState) tiap frame — bukan angka acak/statis.</p>
+        </div>
+
+        <div class="modal__footer">
+          <span class="perf-sim-state" id="perfSimStateLabel" data-state="stopped">SIMULATION: STOPPED</span>
+          <div class="modal__actions">
+            <button class="btn btn--danger" id="perfResetBtn" type="button">RESET</button>
+            <button class="btn btn--setup" id="perfPauseBtn" type="button" disabled>PAUSE</button>
+            <button class="btn btn--primary" id="perfStartBtn" type="button">START</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="js/modules/gauge.js"></script>
@@ -399,6 +484,7 @@
   <script src="js/modules/audio-engine.js"></script>
   <script src="js/modules/throttle-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>
+  <script src="js/modules/performance-mode.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

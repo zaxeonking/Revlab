@@ -168,6 +168,13 @@ const RPMSimulator = (() => {
   let throttlePercent = 0;
   let engineOn = false;
   let revLimiting = false;
+  // PERFORMANCE MODE — pause freezes the whole physics loop exactly where
+  // it stands (no step(), no notify()) so every gauge/readout/graph in
+  // REVLAB holds its last value instead of coasting or resetting. This is
+  // deliberately a loop-level pause, not a per-module one, so nothing
+  // downstream (engine-state.js derived telemetry, gauges, graphs) needs
+  // its own pause logic — they simply stop receiving new frames.
+  let paused = false;
   let engagedGearIndex = 0; // 0 = neutral, mirrors EngineState's gear index
 
   // Dip used to run on a fixed SHIFT_DIP_MS timer regardless of how far
@@ -359,6 +366,15 @@ const RPMSimulator = (() => {
   }
 
   function loop(timestamp) {
+    if (paused) {
+      // Still keep rAF alive (cheap) so resume() doesn't need to restart
+      // the loop machinery — but deliberately skip step()/notify(): no
+      // new RPM math, no new frame handed to EngineState, which is what
+      // makes everything downstream hold perfectly still.
+      lastTimestamp = timestamp;
+      rafHandle = requestAnimationFrame(loop);
+      return;
+    }
     if (lastTimestamp === null) lastTimestamp = timestamp;
     const dtSeconds = Math.min((timestamp - lastTimestamp) / 1000, MAX_DT_S);
     lastTimestamp = timestamp;
@@ -382,6 +398,7 @@ const RPMSimulator = (() => {
       throttlePercent,
       engineOn,
       revLimiting,
+      paused,
       shifting: isDipping(),
       starting: startFlarePhase !== null,
       idleRpm: IDLE_RPM,
@@ -420,6 +437,44 @@ const RPMSimulator = (() => {
 
   function setThrottle(percent) {
     throttlePercent = Math.min(Math.max(Number(percent) || 0, 0), 100);
+  }
+
+  /** PERFORMANCE MODE — PAUSE. Freezes the physics loop in place (see
+   *  loop() above); does not touch engineOn/currentRpm/gear at all, so
+   *  RESUME picks up from exactly where it left off. */
+  function pause() {
+    paused = true;
+  }
+
+  /** PERFORMANCE MODE — resumes a paused loop. lastTimestamp is reset so
+   *  the first frame after resuming doesn't see a huge dt from the wall-
+   *  clock time that passed while paused (same guard MAX_DT_S exists for,
+   *  belt-and-braces here since that gap could otherwise be seconds/minutes). */
+  function resume() {
+    paused = false;
+    lastTimestamp = null;
+  }
+
+  function isPaused() {
+    return paused;
+  }
+
+  /** PERFORMANCE MODE — RESET. Hard-stops the simulation and snaps RPM
+   *  straight to 0 (unlike stop(), which lets RPM coast down naturally —
+   *  a RESET is meant to instantly return to a known, clean baseline, not
+   *  simulate ignition-off spindown). Also clears paused/dip/flare state
+   *  so a subsequent start() begins completely fresh. */
+  function reset() {
+    engineOn = false;
+    throttlePercent = 0;
+    currentRpm = 0;
+    revLimiting = false;
+    dipActive = false;
+    startFlarePhase = null;
+    engagedGearIndex = 0;
+    paused = false;
+    lastTimestamp = null;
+    notify();
   }
 
   /** Tells the simulator which gear is currently engaged (0 = neutral),
@@ -464,6 +519,10 @@ const RPMSimulator = (() => {
     getState,
     start,
     stop,
+    pause,
+    resume,
+    isPaused,
+    reset,
     setThrottle,
     setGear,
     triggerShiftDip,
