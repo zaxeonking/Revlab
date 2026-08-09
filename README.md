@@ -68,6 +68,8 @@ revlab/
 | Engine status (chip)               | ✅ off / idle / running / rev limiter            |
 | Start / Stop engine button         | ✅ toggle start/stop simulasi RPM                |
 | **Simulasi RPM nyata**             | ✅ **rAF loop, inersia, rev limiter — lihat di bawah** |
+| **Gearbox / drivetrain math**      | ✅ **gear ratio × final drive × keliling roda × efisiensi — lihat di bawah** |
+| **Kontrol gear (keyboard)**        | ✅ **Shift = up, Ctrl = down — otomatis pindah ke MANUAL** |
 | Audio engine (Web Audio API)       | 🔲 belum diimplementasikan — hanya stub          |
 
 ## Simulasi RPM (`rpm-simulator.js`)
@@ -164,6 +166,56 @@ label angka yang berubah di atas kurva RPM yang identik:
   karena kopling/synchro tetap ada fisiknya walau perpindahan gigi
   dipicu manual oleh tombol SHIFT, bukan otomatis oleh RPM.
 
+## Gearbox / drivetrain (`gearbox.js`)
+
+RPM dan speed sekarang **benar-benar saling terhubung lewat gear ratio**,
+bukan tabel "gigi X mentok di Y km/h" seperti sebelumnya. Formulanya:
+
+```
+wheelRPM = engineRPM / (gearRatio × finalDrive)
+speedKmh = wheelRPM × wheelCircumferenceM × 0.06 × drivetrainEfficiency
+```
+
+(`0.06` = konversi menit→jam dan meter→km sekaligus.)
+
+Parameter yang dipakai (`js/modules/gearbox.js`, satu-satunya sumber
+angka ini — dipakai langsung oleh `engine-state.js`, dan ditampilkan
+apa adanya di panel POWERTRAIN, bukan diketik ulang di HTML):
+
+- **Gear ratios** (1→6): `3.850 / 2.615 / 1.929 / 1.529 / 1.276 / 1.061`
+- **Final drive**: `3.90 : 1`
+- **Wheel circumference**: `1.98 m` (kira-kira ban 205/55R16)
+- **Drivetrain efficiency**: `92%` (rugi mekanis tetap, bukan slip acak)
+
+Karena speed dihitung langsung dari RPM lewat rasio gigi yang sedang
+aktif, RPM yang sama di gigi berbeda menghasilkan speed yang berbeda
+secara mekanis nyata — gigi 1 tidak akan pernah mencapai speed gigi 6
+walau RPM sama-sama di redline, dan sebaliknya `Gearbox.rpmForSpeed()`
+adalah kebalikan pasti dari `Gearbox.speedForRpm()` (bukan aproksimasi).
+**Neutral (N) tidak punya rasio sama sekali** — bukan "rasio 0", tapi
+memang tidak ada jalur mekanis mesin↔roda, makanya speed tetap 0 keras
+di N terlepas dari RPM (lihat juga bagian Perpindahan gigi di bawah).
+
+Speed tetap 100% deterministik — tidak ada `Math.random()` di mana pun
+dalam rantai RPM → speed ini, sama seperti simulasi RPM itu sendiri.
+
+## Kontrol gearbox
+
+- **Tombol UI** (desktop): SHIFT ▲ / SHIFT ▼ di panel TELEMETRY.
+- **Keyboard**: `Shift` untuk shift up, `Ctrl` untuk shift down. Menekan
+  salah satu otomatis memindahkan mode ke MANUAL dulu (kalau masih di
+  AUTO) sebelum shift-nya dieksekusi — sama seperti paddle-shift di game
+  racing yang langsung mengambil alih kontrol manual begitu dipakai.
+- **Mobile**: shifter mengambang di kiri pedal gas (tombol mode
+  AUTO/MANUAL, ▲/▼, dan label gigi saat ini) — muncul otomatis di
+  viewport ≤640px, mirror 1:1 dari kontrol desktop (guard shift-lock
+  yang sama, disabled state yang sama).
+
+Semua jalur kontrol ini (tombol, keyboard, mobile) memanggil fungsi
+`EngineState.shiftUp()` / `shiftDown()` yang sama persis — jadi shift-lock,
+rev-limiter-per-gigi, dan RPM dip saat shift berlaku sama rata, tidak
+peduli dari input mana shift-nya berasal.
+
 ## Perpindahan gigi (`engine-state.js` — `stepGear`)
 
 Gear tidak lagi murni hasil lookup `gearForRpm(rpm)` seperti tahap
@@ -244,4 +296,5 @@ tidak ada file UI yang perlu disentuh.
 - Implementasi `AudioEngine` dengan `AudioContext`, sample/oscillator
   suara mesin, dan mapping RPM real-time → pitch/gain.
 - Sambungkan suara ke rev limiter (mis. suara "sputter" saat fuel cut).
-- Model termal & gear ratio yang lebih realistis di `engine-state.js`.
+- Model termal yang lebih realistis di `engine-state.js` (gear ratio /
+  drivetrain sudah realistis — lihat `gearbox.js`).

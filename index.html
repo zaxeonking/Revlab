@@ -63,6 +63,30 @@
           <span class="field__label">REDLINE</span>
           <div class="field__value field__value--mono">— — — <small>RPM</small></div>
         </div>
+
+        <!-- GEARBOX SPEC — filled in by ui-controller.js at init from
+             Gearbox's actual constants (js/modules/gearbox.js), never
+             hand-typed here, so this can't drift out of sync with the
+             numbers the simulation loop is really using. -->
+        <div class="field">
+          <span class="field__label">GEAR RATIOS (1→6)</span>
+          <div class="field__value field__value--mono" id="gearboxRatios">— — —</div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">FINAL DRIVE</span>
+          <div class="field__value field__value--mono" id="gearboxFinalDrive">—</div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">WHEEL CIRCUMFERENCE</span>
+          <div class="field__value field__value--mono" id="gearboxWheelCirc">— <small>M</small></div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">DRIVETRAIN EFFICIENCY</span>
+          <div class="field__value field__value--mono" id="gearboxEfficiency">—</div>
+        </div>
       </section>
 
       <!-- CENTER: HERO — SPEEDOMETER + TACHOMETER, side by side -->
@@ -195,6 +219,7 @@
           </div>
 
           <p class="field__hint" id="gearModeHint">Mode AUTO — gearbox berpindah sendiri berdasarkan RPM (dengan jeda perpindahan).</p>
+          <p class="field__hint">Keyboard: <kbd class="key">Shift</kbd> untuk shift up, <kbd class="key">Ctrl</kbd> untuk shift down — otomatis pindah ke mode MANUAL.</p>
         </div>
 
         <p class="panel__note" id="telemetryNote">Nilai di atas dihitung dari input throttle (state JS, bukan angka acak). Siap digantikan data simulator mesin sungguhan.</p>
@@ -307,6 +332,7 @@
   <script src="js/modules/gauge.js"></script>
   <script src="js/modules/speed-gauge.js"></script>
   <script src="js/modules/rpm-simulator.js"></script>
+  <script src="js/modules/gearbox.js"></script>
   <script src="js/modules/engine-state.js"></script>
   <script src="js/modules/audio-engine.js"></script>
   <script src="js/modules/throttle-controller.js"></script>

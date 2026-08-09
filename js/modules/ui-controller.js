@@ -57,7 +57,36 @@ const UIController = (() => {
       mobileShiftUpBtn: document.getElementById('mobileShiftUpBtn'),
       mobileShiftDownBtn: document.getElementById('mobileShiftDownBtn'),
       mobileGearValue: document.getElementById('mobileGearValue'),
+
+      gearboxRatios: document.getElementById('gearboxRatios'),
+      gearboxFinalDrive: document.getElementById('gearboxFinalDrive'),
+      gearboxWheelCirc: document.getElementById('gearboxWheelCirc'),
+      gearboxEfficiency: document.getElementById('gearboxEfficiency'),
     };
+  }
+
+  /** One-time render of the drivetrain spec panel — these numbers never
+   *  change at runtime (no "swap gearbox" feature yet), so this runs
+   *  once at init rather than every frame like render(). Reads straight
+   *  from EngineState's pass-through of Gearbox's real constants, so it
+   *  can never disagree with what the simulation is actually using. */
+  function renderGearboxSpec() {
+    if (els.gearboxRatios) {
+      const labels = EngineState.gearRatios
+        .slice(1) // drop the null neutral entry
+        .map((r) => r.toFixed(3))
+        .join(' / ');
+      els.gearboxRatios.textContent = labels;
+    }
+    if (els.gearboxFinalDrive) {
+      els.gearboxFinalDrive.textContent = `${EngineState.finalDriveRatio.toFixed(2)} : 1`;
+    }
+    if (els.gearboxWheelCirc) {
+      els.gearboxWheelCirc.innerHTML = `${EngineState.wheelCircumferenceM.toFixed(2)} <small>M</small>`;
+    }
+    if (els.gearboxEfficiency) {
+      els.gearboxEfficiency.textContent = `${Math.round(EngineState.drivetrainEfficiency * 100)}%`;
+    }
   }
 
   // Speed unit is a pure display preference — it never touches
@@ -307,6 +336,44 @@ const UIController = (() => {
     }
   }
 
+  /**
+   * Shift/Ctrl keyboard gear control. Deliberately separate from
+   * ThrottleController's keyboard binding (W/ArrowUp) — that one ramps
+   * a held value every frame, this one fires a single discrete shift
+   * per keydown, same "one shift per press" contract as the SHIFT ▲▼
+   * buttons (shiftUp()/shiftDown() already own the shift-lock/engine-on
+   * guards, so this only needs to call them, not re-implement guarding).
+   *
+   * Pressing either key while in AUTO switches to MANUAL first — same
+   * pattern as a sequential-shift paddle in a racing game taking manual
+   * control the instant the driver actually shifts, rather than
+   * silently no-op'ing (or fighting the automatic gearbox) while still
+   * in AUTO.
+   */
+  function bindGearKeyboard() {
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.key !== 'Shift' && e.key !== 'Control') return;
+
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (EngineState.getState().gearMode !== 'manual') {
+        EngineState.setGearMode('manual');
+        logLine('GEAR MODE → MANUAL (otomatis, dari keyboard shift).');
+      }
+
+      const before = EngineState.getState().gear;
+      if (e.key === 'Shift') {
+        const after = EngineState.shiftUp().gear;
+        if (after !== before) logLine(`SHIFT UP (Shift) — gigi ${before} → ${after}.`);
+      } else {
+        const after = EngineState.shiftDown().gear;
+        if (after !== before) logLine(`SHIFT DOWN (Ctrl) — gigi ${before} → ${after}.`);
+      }
+    });
+  }
+
   function bindStartButton() {
     if (!els.startEngineBtn) return;
     els.startEngineBtn.addEventListener('click', () => {
@@ -332,9 +399,11 @@ const UIController = (() => {
     gaugeRef = gauge;
     speedGaugeRef = speedGauge;
     cacheEls();
+    renderGearboxSpec();
     bindThrottleSlider();
     bindSpeedUnitToggle();
     bindGearControls();
+    bindGearKeyboard();
     bindStartButton();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
 
@@ -357,6 +426,7 @@ const UIController = (() => {
 
     logLine('UI controller ready — bound to EngineState + RPMSimulator.');
     logLine('Throttle: keyboard (W / ↑), tombol UI, dan pedal mobile aktif.');
+    logLine('Gear: Shift (up) / Ctrl (down), tombol SHIFT ▲▼, atau shifter mobile.');
   }
 
   return { init, logLine, setEngineStatus, setAudioStatusLabel };

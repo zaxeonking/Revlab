@@ -15,8 +15,11 @@
  *     and forwards user input via EngineState.startEngine() / .stopEngine()
  *     / .setThrottle() / .shiftUp() / .shiftDown() / .setGearMode().
  *   - A future, more complete engine simulator can replace the derive*()
- *     functions below (gear ratios, drivetrain, thermal model, turbo
- *     model) without the UI layer changing at all.
+ *     functions below (thermal model, turbo model, etc.) without the UI
+ *     layer changing at all. Gear ratios / final drive / wheel
+ *     circumference / drivetrain efficiency are no longer placeholders —
+ *     see js/modules/gearbox.js, the single source of truth for how RPM
+ *     and speed relate to each other.
  *
  * Gear logic (`stepGear`) is a small state machine, not a pure lookup,
  * so it can add hysteresis (different RPM thresholds going up vs down)
@@ -35,18 +38,17 @@ const EngineState = (() => {
   const AMBIENT_TEMP_C = 24;
   const OPERATING_TEMP_C = 92;
   const MAX_BOOST_BAR = 1.4;
+  // Dial ceiling for the speedometer face — kept as a display constant
+  // (fed to SpeedGauge for its tick scale), separate now from how speed
+  // is actually calculated below. Speed itself no longer comes from a
+  // per-gear lookup ceiling — see Gearbox.speedForRpm(): it's genuine
+  // gear-ratio × final-drive × wheel-circumference × efficiency math
+  // (js/modules/gearbox.js), so RPM and speed are now ALWAYS related
+  // through the actual mechanical ratio of whichever gear is engaged,
+  // not an arbitrary "gear N tops out at X km/h" table. Neutral (index
+  // 0) still has no mechanical path to the wheels at all — see below,
+  // displayed speed is hard-locked to 0 there regardless of RPM.
   const MAX_SPEED_KMH = 260;
-  // Per-gear speed limiter. Speed used to be derived straight from
-  // rpmFraction with no gear awareness at all — meaning revving in
-  // NEUTRAL visibly moved the speed readout even though no gear is
-  // engaged to actually turn the wheels, and every gear mapped RPM to
-  // speed identically. Index 0 (N) is always 0: neutral disconnects the
-  // engine from the drivetrain, so the needle can spin all it wants
-  // without the car going anywhere. Indices 1–6 are each gear's own
-  // speed ceiling (reached at redline while held in that gear) — a real
-  // per-gear "limiter" in the sense the user asked for: 1st gear simply
-  // cannot produce 6th-gear speeds no matter how hard it's revved.
-  const GEAR_MAX_SPEED_KMH = [0, 45, 85, 130, 175, 215, MAX_SPEED_KMH];
   const KMH_PER_MPH = 1.609344;
 
   const MAX_RPM = RPMSimulator.MAX_RPM;
@@ -150,7 +152,7 @@ const EngineState = (() => {
   let shiftLockUntil = 0; // performance.now() timestamp
 
   // ---- Displayed-speed smoothing -------------------------------------
-  // Speed is derived per-gear (GEAR_MAX_SPEED_KMH), so the instant a
+  // Speed is derived per-gear via Gearbox.speedForRpm(), so the instant a
   // shift completes, the SAME rpm maps to a different speed ceiling in
   // the new gear — road speed can't actually pop like that just because
   // the engine picked a new ratio. Rate-limiting the DISPLAYED number
@@ -323,17 +325,18 @@ const EngineState = (() => {
     state.canShiftUp = frame.engineOn && gearIndex < MAX_GEAR_INDEX && !isShiftLocked();
     state.canShiftDown = frame.engineOn && gearIndex > 0 && !isShiftLocked();
 
-    // Speed now depends on the ENGAGED GEAR, not raw rpmFraction alone:
-    // gearIndex 0 (N) is hard-locked to 0 regardless of RPM, and every
-    // other gear is capped at its own entry in GEAR_MAX_SPEED_KMH —
-    // see the table above for why.
+    // Speed now comes from real drivetrain math (Gearbox.speedForRpm),
+    // not a per-gear ceiling lookup: gearIndex 0 (N) has no ratio, so
+    // it's hard-locked to 0 regardless of RPM (see comment above and
+    // the displaySpeedKmh branch below); every other gear's speed is
+    // engineRpm run through that gear's actual ratio × final drive ×
+    // wheel circumference × efficiency — so a given RPM in 1st and the
+    // SAME RPM in 6th now correctly produce different, mechanically
+    // real speeds, related through the gear ratio rather than an
+    // arbitrary table.
     let targetSpeedKmh = 0;
     if (frame.engineOn && gearIndex > 0) {
-      const rpmAboveIdleFraction = Math.min(
-        Math.max((frame.rpm - IDLE_RPM) / (MAX_RPM - IDLE_RPM), 0),
-        1
-      );
-      targetSpeedKmh = rpmAboveIdleFraction * GEAR_MAX_SPEED_KMH[gearIndex];
+      targetSpeedKmh = Gearbox.speedForRpm(frame.rpm, gearIndex);
     }
 
     const nowTs = now();
@@ -451,5 +454,12 @@ const EngineState = (() => {
     redlineStartK: REDLINE_RPM / 1000,
     maxSpeedKmh: MAX_SPEED_KMH,
     KMH_PER_MPH,
+    // Drivetrain spec pass-through — same numbers Gearbox.speedForRpm()
+    // above actually uses, exposed so the UI can display the real spec
+    // instead of a second, potentially-drifting copy of these numbers.
+    gearRatios: Gearbox.GEAR_RATIOS,
+    finalDriveRatio: Gearbox.FINAL_DRIVE_RATIO,
+    wheelCircumferenceM: Gearbox.WHEEL_CIRCUMFERENCE_M,
+    drivetrainEfficiency: Gearbox.DRIVETRAIN_EFFICIENCY,
   };
 })();
