@@ -14,6 +14,7 @@
 const UIController = (() => {
   let els = {};
   let gaugeRef = null;
+  let speedGaugeRef = null;
 
   function cacheEls() {
     els = {
@@ -39,7 +40,9 @@ const UIController = (() => {
       gearReadout: document.getElementById('gearReadout'),
       gaugeCaption: document.getElementById('gaugeCaption'),
 
-      speedReadout: document.getElementById('speedReadout'),
+      speedReadout: document.getElementById('speedValue'),
+      speedGaugeUnit: document.getElementById('speedGaugeUnit'),
+      speedWarningIndicator: document.getElementById('speedWarningIndicator'),
       speedUnitToggle: document.getElementById('speedUnitToggle'),
       tempReadout: document.getElementById('tempReadout'),
       boostReadout: document.getElementById('boostReadout'),
@@ -175,9 +178,16 @@ const UIController = (() => {
       }
     }
 
+    if (speedGaugeRef) {
+      const overWarnZone = speedGaugeRef.setSpeedKmh(state.speedKmh);
+      if (els.speedWarningIndicator) {
+        els.speedWarningIndicator.dataset.active = overWarnZone ? 'true' : 'false';
+      }
+    }
     if (els.speedReadout) {
       const { value, unit } = formatSpeed(state.speedKmh);
-      els.speedReadout.innerHTML = `${value} <small id="speedUnitLabel">${unit}</small>`;
+      els.speedReadout.textContent = String(value);
+      if (els.speedGaugeUnit) els.speedGaugeUnit.textContent = unit;
     }
     if (els.tempReadout) {
       els.tempReadout.innerHTML = `${state.engineTempC} <small>°C</small>`;
@@ -227,6 +237,7 @@ const UIController = (() => {
     if (!els.speedUnitToggle) return;
     els.speedUnitToggle.addEventListener('click', () => {
       speedUnit = speedUnit === 'kmh' ? 'mph' : 'kmh';
+      if (speedGaugeRef) speedGaugeRef.setUnit(speedUnit);
       // Re-render immediately off the last known state so the switch
       // feels instant rather than waiting for the next sim frame.
       render(EngineState.getState());
@@ -317,8 +328,9 @@ const UIController = (() => {
     });
   }
 
-  function init(gauge) {
+  function init(gauge, speedGauge) {
     gaugeRef = gauge;
+    speedGaugeRef = speedGauge;
     cacheEls();
     bindThrottleSlider();
     bindSpeedUnitToggle();

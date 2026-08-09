@@ -63,42 +63,82 @@
           <span class="field__label">REDLINE</span>
           <div class="field__value field__value--mono">— — — <small>RPM</small></div>
         </div>
+
+        <!-- SECONDARY: RPM TACHOMETER -->
+        <!-- Moved out of the hero position now that SPEED is the primary
+             readout (see panel--gauge below) — RPM is still real,
+             simulation-driven data, just presented as secondary engine
+             telemetry here rather than the main instrument. Same ids as
+             before (gauge.js is id-based, not position-based), just a
+             smaller "--compact" gauge-wrap. -->
+        <div class="field">
+          <span class="field__label">TACHOMETER</span>
+          <div class="gauge-wrap gauge-wrap--compact">
+            <svg id="rpmGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="RPM gauge, idle">
+              <circle class="gauge__bezel" cx="150" cy="150" r="142" />
+              <g id="gaugeTicks"></g>
+              <path id="gaugeRedline" class="gauge__redline-arc" d="" />
+              <g id="gaugeNeedle" class="gauge__needle-group">
+                <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
+                <circle cx="150" cy="150" r="9" class="gauge__hub" />
+              </g>
+            </svg>
+
+            <div class="gauge__readout gauge__readout--compact">
+              <span class="gauge__rpm-value gauge__rpm-value--compact" id="rpmValue">0</span>
+              <span class="gauge__rpm-unit">RPM × 1000</span>
+            </div>
+
+            <div class="redline-indicator redline-indicator--compact" id="redlineIndicator" data-active="false" aria-live="polite">
+              <span class="redline-indicator__dot"></span>
+              <span class="redline-indicator__label">REDLINE</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <!-- CENTER: HERO — RPM GAUGE -->
-      <section class="panel panel--gauge" aria-label="Tachometer">
+      <!-- CENTER: HERO — SPEEDOMETER -->
+      <section class="panel panel--gauge" aria-label="Speedometer">
         <div class="gauge-wrap">
-          <svg id="rpmGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="RPM gauge, idle">
+          <svg id="speedGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="Speedometer, 0">
             <!-- Outer bezel -->
             <circle class="gauge__bezel" cx="150" cy="150" r="142" />
 
-            <!-- Tick arc groups injected by gauge.js -->
-            <g id="gaugeTicks"></g>
+            <!-- Tick arc groups injected by speed-gauge.js -->
+            <g id="speedGaugeTicks"></g>
 
-            <!-- Redline arc (drawn statically, values placeholder) -->
-            <path id="gaugeRedline" class="gauge__redline-arc" d="" />
+            <!-- Warning/red zone arc near top speed -->
+            <path id="speedGaugeWarnArc" class="gauge__warn-arc" d="" />
 
             <!-- Needle -->
-            <g id="gaugeNeedle" class="gauge__needle-group">
+            <g id="speedGaugeNeedle" class="gauge__needle-group">
               <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
               <circle cx="150" cy="150" r="9" class="gauge__hub" />
             </g>
           </svg>
 
           <div class="gauge__readout">
-            <span class="gauge__rpm-value" id="rpmValue">0</span>
-            <span class="gauge__rpm-unit">RPM × 1000</span>
+            <span class="gauge__rpm-value" id="speedValue">0</span>
+            <span class="gauge__rpm-unit" id="speedGaugeUnit">KM/H</span>
           </div>
 
-          <div class="redline-indicator" id="redlineIndicator" data-active="false" aria-live="polite">
+          <div class="speed-warning-indicator" id="speedWarningIndicator" data-active="false" aria-live="polite">
             <span class="redline-indicator__dot"></span>
-            <span class="redline-indicator__label">REDLINE</span>
+            <span class="redline-indicator__label">OVER LIMIT</span>
           </div>
 
           <div class="gear-indicator" id="gearIndicator" aria-label="Current gear" data-shifting="false">
             <span class="gear-indicator__value" id="gearValue">N</span>
           </div>
         </div>
+
+        <button
+          id="speedUnitToggle"
+          class="unit-toggle unit-toggle--gauge"
+          type="button"
+          aria-label="Ganti satuan kecepatan antara KM/H dan MPH"
+          title="Ganti satuan KM/H ⇄ MPH"
+        >KM/H ⇄ MPH</button>
 
         <button id="startEngineBtn" class="btn btn--primary btn--start-engine" type="button">
           START ENGINE
@@ -115,19 +155,6 @@
           <li class="telemetry-item">
             <span class="telemetry-item__label">THROTTLE</span>
             <span class="telemetry-item__value telemetry-item__value--mono" id="throttleReadout">0%</span>
-          </li>
-          <li class="telemetry-item">
-            <span class="telemetry-item__label">SPEED</span>
-            <span class="telemetry-item__value-group">
-              <span class="telemetry-item__value telemetry-item__value--mono" id="speedReadout">0 <small id="speedUnitLabel">KM/H</small></span>
-              <button
-                id="speedUnitToggle"
-                class="unit-toggle"
-                type="button"
-                aria-label="Ganti satuan kecepatan antara KM/H dan MPH"
-                title="Ganti satuan KM/H ⇄ MPH"
-              >KM/H ⇄ MPH</button>
-            </span>
           </li>
           <li class="telemetry-item">
             <span class="telemetry-item__label">ENGINE TEMP</span>
@@ -280,6 +307,7 @@
   </div>
 
   <script src="js/modules/gauge.js"></script>
+  <script src="js/modules/speed-gauge.js"></script>
   <script src="js/modules/rpm-simulator.js"></script>
   <script src="js/modules/engine-state.js"></script>
   <script src="js/modules/audio-engine.js"></script>

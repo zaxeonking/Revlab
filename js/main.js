@@ -17,8 +17,15 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const gauge = Gauge.init();
+  // EngineState's maxSpeedKmh/KMH_PER_MPH are static exports (available
+  // as soon as the module's IIFE has run, no EngineState.init() needed
+  // yet) — SpeedGauge just needs them to know its dial's top-speed scale.
+  const speedGauge = SpeedGauge.init({
+    maxSpeedKmh: EngineState.maxSpeedKmh,
+    kmhPerMph: EngineState.KMH_PER_MPH,
+  });
   EngineState.init();
-  UIController.init(gauge);
+  UIController.init(gauge, speedGauge);
 
   console.info('[REVLAB] Cockpit UI loaded. RPMSimulator running (rAF loop, deterministic physics).');
   console.info('[RPMSimulator] current state:', RPMSimulator.getState());

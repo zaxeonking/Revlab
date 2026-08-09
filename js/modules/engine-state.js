@@ -449,6 +449,7 @@ const EngineState = (() => {
     shiftDown,
     maxRpmK: MAX_RPM / 1000,
     redlineStartK: REDLINE_RPM / 1000,
+    maxSpeedKmh: MAX_SPEED_KMH,
     KMH_PER_MPH,
   };
 })();

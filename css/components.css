@@ -175,6 +175,17 @@
   opacity: 0.8;
 }
 
+/* Speedometer's own top-speed warning zone — same construction as
+   .gauge__redline-arc, but red rather than amber so speed-over-limit
+   reads as more urgent than an RPM redline (which is a normal part of
+   revving hard, not a warning by itself). */
+.gauge__warn-arc {
+  fill: none;
+  stroke: var(--accent-danger);
+  stroke-width: 4;
+  opacity: 0.85;
+}
+
 .gauge__needle-group {
   transform-origin: 150px 150px;
   transform: rotate(0deg);
@@ -229,6 +240,38 @@
   max-width: 32ch;
 }
 
+/* ---------- Compact secondary tachometer (POWERTRAIN panel) ----------
+   Same gauge/needle/tick classes as the hero speedometer — this is a
+   pure size + density override, not a different visual language, so
+   the two instruments still read as one family. */
+.gauge-wrap--compact {
+  width: min(100%, 150px);
+  margin: 0 auto;
+}
+
+.gauge__readout--compact {
+  bottom: 18%;
+}
+
+.gauge__rpm-value--compact {
+  font-size: var(--fs-lg);
+}
+
+.redline-indicator--compact {
+  top: 10%;
+  padding: 2px var(--sp-2);
+}
+
+.redline-indicator--compact .redline-indicator__label {
+  font-size: 8px;
+}
+
+/* Unit toggle sitting directly under the speedometer hero (moved out of
+   the telemetry list now that SPEED itself lives in the gauge). */
+.unit-toggle--gauge {
+  width: min(100%, 220px);
+}
+
 /* Start/Stop moved directly under the RPM display (was buried in the
    footer control strip, off-screen below the fold on mobile — see
    btn--start-engine usage in index.html) so it's reachable without
@@ -277,6 +320,46 @@
 }
 
 .redline-indicator[data-active="true"] .redline-indicator__label {
+  color: var(--accent-danger);
+}
+
+/* ---------- Speed warning indicator (red-zone lamp on the speedometer) ---------- */
+/* Structurally identical to .redline-indicator, but this one's "off"
+   state is neutral/dim by design — going over the top-speed warning
+   zone is meant to read as more alarming than sitting at redline RPM
+   (which happens routinely under hard acceleration), so it snaps
+   straight to the danger color with no intermediate amber state. */
+.speed-warning-indicator {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-0);
+  background: var(--bg-2);
+}
+
+.speed-warning-indicator .redline-indicator__dot {
+  background: var(--text-2);
+  opacity: 0.4;
+}
+
+.speed-warning-indicator[data-active="true"] {
+  border-color: var(--accent-danger);
+  background: rgba(255, 77, 77, 0.14);
+}
+
+.speed-warning-indicator[data-active="true"] .redline-indicator__dot {
+  background: var(--accent-danger);
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+}
+
+.speed-warning-indicator[data-active="true"] .redline-indicator__label {
   color: var(--accent-danger);
 }
 
