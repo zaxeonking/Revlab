@@ -124,7 +124,13 @@ const UIController = (() => {
   function render(state) {
     if (gaugeRef) gaugeRef.setValueK(state.rpmK);
 
-    if (els.rpmValue) els.rpmValue.textContent = String(state.rpm);
+    // Angka RPM sengaja dikunci ke 0 selama gigi N — jarum tetap mengikuti
+    // RPM asli (revving di netral tetap kelihatan gerak), tapi angka
+    // digital hanya menampilkan RPM saat ada gigi yang benar-benar
+    // terhubung ke drivetrain (gearIndex > 0).
+    if (els.rpmValue) {
+      els.rpmValue.textContent = state.gearIndex === 0 ? '0' : String(state.rpm);
+    }
 
     if (els.redlineIndicator) {
       els.redlineIndicator.dataset.active = state.inRedline ? 'true' : 'false';
