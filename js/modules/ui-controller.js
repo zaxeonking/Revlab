@@ -64,6 +64,15 @@ const UIController = (() => {
       gearboxEfficiency: document.getElementById('gearboxEfficiency'),
 
       shiftLights: document.getElementById('shiftLights'),
+
+      vehicleSetupOpenBtn: document.getElementById('vehicleSetupOpenBtn'),
+      vehicleSetupOverlay: document.getElementById('vehicleSetupOverlay'),
+      vehicleSetupCloseBtn: document.getElementById('vehicleSetupCloseBtn'),
+      vehicleSetupDoneBtn: document.getElementById('vehicleSetupDoneBtn'),
+      vehicleSetupResetBtn: document.getElementById('vehicleSetupResetBtn'),
+      vehicleSetupEngineGrid: document.getElementById('vehicleSetupEngineGrid'),
+      vehicleSetupDrivetrainGrid: document.getElementById('vehicleSetupDrivetrainGrid'),
+      vehicleSetupGearRatios: document.getElementById('vehicleSetupGearRatios'),
     };
   }
 
@@ -119,27 +128,53 @@ const UIController = (() => {
     wasInRedline = state.inRedline;
   }
 
-  /** One-time render of the drivetrain spec panel — these numbers never
-   *  change at runtime (no "swap gearbox" feature yet), so this runs
-   *  once at init rather than every frame like render(). Reads straight
-   *  from EngineState's pass-through of Gearbox's real constants, so it
-   *  can never disagree with what the simulation is actually using. */
+  /**
+   * Rescales the RPM/speed gauge faces when VEHICLE SETUP has changed
+   * Max RPM / Redline RPM / Top Speed — guarded with last-applied
+   * tracking so the SVG tick/arc rebuild only runs on an actual change,
+   * not on every animation frame (render() runs every frame; rebuilding
+   * gauge markup that often would be wasteful and pointless).
+   */
+  let lastMaxRpmK = null;
+  let lastRedlineStartK = null;
+  let lastMaxSpeedKmh = null;
+
+  function syncGaugeScales(state) {
+    if (gaugeRef && gaugeRef.reconfigure
+      && (state.maxRpmK !== lastMaxRpmK || state.redlineStartK !== lastRedlineStartK)) {
+      gaugeRef.reconfigure(state.maxRpmK, state.redlineStartK);
+      lastMaxRpmK = state.maxRpmK;
+      lastRedlineStartK = state.redlineStartK;
+    }
+    if (speedGaugeRef && speedGaugeRef.reconfigure && state.maxSpeedKmh !== lastMaxSpeedKmh) {
+      speedGaugeRef.reconfigure(state.maxSpeedKmh);
+      lastMaxSpeedKmh = state.maxSpeedKmh;
+    }
+  }
+
+  /** Renders the drivetrain spec panel. Now called every frame from
+   *  render() (not just once at init) because VEHICLE SETUP can change
+   *  gear ratios / final drive / wheel radius at runtime — reads live
+   *  via EngineState.getDrivetrainSpec(), so this can never disagree
+   *  with what the simulation is actually using. Plain textContent
+   *  writes are cheap enough to redo every frame. */
   function renderGearboxSpec() {
+    const spec = EngineState.getDrivetrainSpec();
     if (els.gearboxRatios) {
-      const labels = EngineState.gearRatios
+      const labels = spec.gearRatios
         .slice(1) // drop the null neutral entry
         .map((r) => r.toFixed(3))
         .join(' / ');
       els.gearboxRatios.textContent = labels;
     }
     if (els.gearboxFinalDrive) {
-      els.gearboxFinalDrive.textContent = `${EngineState.finalDriveRatio.toFixed(2)} : 1`;
+      els.gearboxFinalDrive.textContent = `${spec.finalDriveRatio.toFixed(2)} : 1`;
     }
     if (els.gearboxWheelCirc) {
-      els.gearboxWheelCirc.innerHTML = `${EngineState.wheelCircumferenceM.toFixed(2)} <small>M</small>`;
+      els.gearboxWheelCirc.innerHTML = `${spec.wheelCircumferenceM.toFixed(2)} <small>M</small>`;
     }
     if (els.gearboxEfficiency) {
-      els.gearboxEfficiency.textContent = `${Math.round(EngineState.drivetrainEfficiency * 100)}%`;
+      els.gearboxEfficiency.textContent = `${Math.round(spec.drivetrainEfficiency * 100)}%`;
     }
   }
 
@@ -210,6 +245,8 @@ const UIController = (() => {
   function render(state) {
     if (gaugeRef) gaugeRef.setValueK(state.rpmK);
     renderShiftLights(state);
+    renderGearboxSpec();
+    syncGaugeScales(state);
 
     // Angka RPM sengaja dikunci ke 0 selama gigi N — jarum tetap mengikuti
     // RPM asli (revving di netral tetap kelihatan gerak), tapi angka
@@ -429,6 +466,196 @@ const UIController = (() => {
     });
   }
 
+  // ------------------------------------------------------------------
+  // VEHICLE SETUP panel — form is generated from VehicleSetup's param
+  // specs (js/modules/vehicle-setup.js), not hand-typed in index.html,
+  // so it can never drift out of sync with the min/max rules actually
+  // enforced. Every field applies immediately on change (no separate
+  // "Apply" step) — validation happens in VehicleSetup.set()/
+  // setGearRatio(), which also pushes the result straight into
+  // EngineState.applyVehicleSetup().
+  // ------------------------------------------------------------------
+  const setupInputEls = {};   // paramKey -> <input>
+  const setupMsgEls = {};     // paramKey -> <p> (validation message)
+  const setupGearInputEls = []; // index -> <input>
+  const setupGearMsgEls = [];   // index -> <p>
+
+  function buildSetupFieldNode(key, spec, inputId) {
+    const wrap = document.createElement('div');
+    wrap.className = 'setup-field';
+    wrap.dataset.key = key;
+
+    const label = document.createElement('label');
+    label.className = 'setup-field__label';
+    label.setAttribute('for', inputId);
+    label.textContent = spec.label;
+    if (spec.unit) {
+      const unit = document.createElement('span');
+      unit.className = 'setup-field__unit';
+      unit.textContent = spec.unit;
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(unit);
+    }
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.id = inputId;
+    input.className = 'setup-field__input';
+    input.min = String(spec.min);
+    input.max = String(spec.max);
+    input.step = String(spec.step);
+    input.inputMode = spec.decimals > 0 ? 'decimal' : 'numeric';
+
+    const range = document.createElement('p');
+    range.className = 'setup-field__range';
+    range.textContent = `${formatSpecNum(spec.min, spec.decimals)} – ${formatSpecNum(spec.max, spec.decimals)}`;
+
+    const msg = document.createElement('p');
+    msg.className = 'setup-field__msg';
+    msg.setAttribute('aria-live', 'polite');
+
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    wrap.appendChild(range);
+    wrap.appendChild(msg);
+
+    return { wrap, input, msg };
+  }
+
+  function formatSpecNum(n, decimals) {
+    return Number(n).toFixed(decimals);
+  }
+
+  function buildVehicleSetupForm() {
+    if (!els.vehicleSetupEngineGrid || !els.vehicleSetupDrivetrainGrid || !els.vehicleSetupGearRatios) return;
+
+    els.vehicleSetupEngineGrid.innerHTML = '';
+    els.vehicleSetupDrivetrainGrid.innerHTML = '';
+    els.vehicleSetupGearRatios.innerHTML = '';
+
+    VehicleSetup.getParamKeys().forEach((key) => {
+      const spec = VehicleSetup.getSpec(key);
+      const inputId = `setup-${key}`;
+      const { wrap, input, msg } = buildSetupFieldNode(key, spec, inputId);
+
+      input.addEventListener('change', () => {
+        const result = VehicleSetup.set(key, input.value);
+        applySetupFieldResult(key, input, msg, result, spec);
+      });
+
+      setupInputEls[key] = input;
+      setupMsgEls[key] = msg;
+
+      const targetGrid = spec.group === 'drivetrain' ? els.vehicleSetupDrivetrainGrid : els.vehicleSetupEngineGrid;
+      targetGrid.appendChild(wrap);
+    });
+
+    const gearSpec = VehicleSetup.getGearRatioSpec();
+    const gearLabels = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
+    for (let i = 0; i < VehicleSetup.GEAR_COUNT; i += 1) {
+      const inputId = `setup-gear-${i}`;
+      const { wrap, input, msg } = buildSetupFieldNode(`gear-${i}`, { ...gearSpec, label: gearLabels[i] }, inputId);
+      wrap.classList.add('setup-field--gear');
+
+      input.addEventListener('change', () => {
+        const result = VehicleSetup.setGearRatio(i, input.value);
+        applySetupFieldResult(`gear-${i}`, input, msg, result, gearSpec);
+      });
+
+      setupGearInputEls[i] = input;
+      setupGearMsgEls[i] = msg;
+      els.vehicleSetupGearRatios.appendChild(wrap);
+    }
+
+    renderVehicleSetupValues(VehicleSetup.getAll());
+  }
+
+  /** Writes the clamped/validated value back into the field (so an
+   *  out-of-range entry visibly snaps to what actually took effect),
+   *  shows the validation message if any, and logs a one-line summary
+   *  to the system log — same log every other control in REVLAB uses. */
+  function applySetupFieldResult(key, input, msgEl, result, spec) {
+    input.value = formatSpecNum(result.value, spec.decimals);
+    msgEl.textContent = result.message || '';
+    msgEl.dataset.state = result.ok ? 'ok' : 'clamped';
+    if (result.message) {
+      logLine(`VEHICLE SETUP — ${key}: ${result.message}`);
+    } else {
+      logLine(`VEHICLE SETUP — ${key} → ${formatSpecNum(result.value, spec.decimals)}${spec.unit ? ' ' + spec.unit : ''}.`);
+    }
+  }
+
+  /** Re-populates every field from a VehicleSetup snapshot — used after
+   *  RESET SETUP and on initial panel build, so the form always mirrors
+   *  what's actually applied to the simulation. Clears any stale
+   *  validation messages too. */
+  function renderVehicleSetupValues(values) {
+    VehicleSetup.getParamKeys().forEach((key) => {
+      const spec = VehicleSetup.getSpec(key);
+      const input = setupInputEls[key];
+      if (input && document.activeElement !== input) {
+        input.value = formatSpecNum(values[key], spec.decimals);
+      }
+      if (setupMsgEls[key]) {
+        setupMsgEls[key].textContent = '';
+        setupMsgEls[key].dataset.state = '';
+      }
+    });
+    const gearSpec = VehicleSetup.getGearRatioSpec();
+    values.gearRatios.forEach((r, i) => {
+      const input = setupGearInputEls[i];
+      if (input && document.activeElement !== input) {
+        input.value = formatSpecNum(r, gearSpec.decimals);
+      }
+      if (setupGearMsgEls[i]) {
+        setupGearMsgEls[i].textContent = '';
+        setupGearMsgEls[i].dataset.state = '';
+      }
+    });
+  }
+
+  function openVehicleSetup() {
+    if (!els.vehicleSetupOverlay) return;
+    els.vehicleSetupOverlay.dataset.open = 'true';
+    els.vehicleSetupOverlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeVehicleSetup() {
+    if (!els.vehicleSetupOverlay) return;
+    els.vehicleSetupOverlay.dataset.open = 'false';
+    els.vehicleSetupOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function bindVehicleSetupPanel() {
+    if (els.vehicleSetupOpenBtn) {
+      els.vehicleSetupOpenBtn.addEventListener('click', openVehicleSetup);
+    }
+    if (els.vehicleSetupCloseBtn) {
+      els.vehicleSetupCloseBtn.addEventListener('click', closeVehicleSetup);
+    }
+    if (els.vehicleSetupDoneBtn) {
+      els.vehicleSetupDoneBtn.addEventListener('click', closeVehicleSetup);
+    }
+    if (els.vehicleSetupOverlay) {
+      // Click on the dim backdrop (not the modal card itself) also closes.
+      els.vehicleSetupOverlay.addEventListener('click', (e) => {
+        if (e.target === els.vehicleSetupOverlay) closeVehicleSetup();
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && els.vehicleSetupOverlay && els.vehicleSetupOverlay.dataset.open === 'true') {
+        closeVehicleSetup();
+      }
+    });
+    if (els.vehicleSetupResetBtn) {
+      els.vehicleSetupResetBtn.addEventListener('click', () => {
+        const values = VehicleSetup.reset();
+        renderVehicleSetupValues(values);
+        logLine('VEHICLE SETUP — RESET SETUP: semua parameter dikembalikan ke default pabrik.');
+      });
+    }
+  }
+
   function bindStartButton() {
     if (!els.startEngineBtn) return;
     els.startEngineBtn.addEventListener('click', () => {
@@ -461,6 +688,8 @@ const UIController = (() => {
     bindGearControls();
     bindGearKeyboard();
     bindStartButton();
+    buildVehicleSetupForm();
+    bindVehicleSetupPanel();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
 
     EngineState.subscribe((state) => {

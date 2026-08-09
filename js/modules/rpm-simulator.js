@@ -40,16 +40,25 @@
  */
 
 const RPMSimulator = (() => {
-  // ---- Engine profile (placeholder values, later replaceable) ----
-  // Resting/idle baseline is 0, not a nonzero idle rpm — this simulator
-  // reads "not on the gas" as 0 on the dial (0 also correctly means
-  // "not moving" for the neutral/speed logic in engine-state.js), so
-  // there's one consistent zero baseline instead of RPM settling at a
-  // nonzero idle number while everything else reads 0.
-  const IDLE_RPM = 0;
-  const MAX_RPM = 9000;          // absolute ceiling — matches gauge face (9 x 1000)
-  const REDLINE_RPM = 7500;      // visual redline zone start — matches gauge.js REDLINE_START_K
-  const REV_LIMIT_RPM = 8800;    // engine's absolute fuel-cut ceiling (top gear / neutral use this)
+  // ---- Engine profile ----
+  // These used to be fixed constants tuned by hand. They're now the
+  // simulator's default profile — VEHICLE SETUP (vehicle-setup.js, via
+  // EngineState.applyVehicleSetup()) calls configure() below to replace
+  // them with whatever the driver has dialed in (Idle/Redline/Max RPM,
+  // weight/power/torque → accel rate, engine braking → decel/spindown
+  // rate, gear ratios → per-gear accel multiplier stays fixed but the
+  // baseline it multiplies now moves). At their DEFAULT_* values the
+  // simulation behaves byte-for-byte the same as before this became
+  // configurable — VehicleSetup's own defaults are chosen to match.
+  const DEFAULT_IDLE_RPM = 800;
+  const DEFAULT_MAX_RPM = 9000;          // absolute ceiling — matches gauge face (9 x 1000)
+  const DEFAULT_REDLINE_RPM = 7500;      // visual redline zone start — matches gauge.js REDLINE_START_K
+  const DEFAULT_REV_LIMIT_RPM = 8800;    // engine's absolute fuel-cut ceiling (top gear / neutral use this)
+
+  let IDLE_RPM = DEFAULT_IDLE_RPM;
+  let MAX_RPM = DEFAULT_MAX_RPM;
+  let REDLINE_RPM = DEFAULT_REDLINE_RPM;
+  let REV_LIMIT_RPM = DEFAULT_REV_LIMIT_RPM;
   const REV_LIMIT_HYSTERESIS = 450; // fuel-cut releases once RPM falls this far below whichever limit is active
 
   // Idle used to sit perfectly flat at exactly IDLE_RPM forever. This
@@ -64,27 +73,20 @@ const RPMSimulator = (() => {
   const IDLE_WOBBLE_HZ = 1.3;
   const IDLE_WOBBLE_THROTTLE_THRESHOLD = 2; // % — wobble only applies this close to closed throttle
 
-  // Base rates before the per-gear multiplier below is applied. Dialed
-  // BACK DOWN from the previous tune (was 4400) — that made RPM climb
-  // fast enough in every gear to feel light/revvy instead of like it's
-  // pulling real mass against it. Lower baseline = more "tarikan berat":
-  // the flywheel visibly resists spinning up rather than snapping to
-  // target, especially noticeable in the higher gears once
-  // GEAR_ACCEL_MULT below has less multiplier left to compensate with.
-  // Bumped back up from 3100: that tune leaned too far into a
-  // floaty/underpowered feel ("kurang berat tarikannya") instead of
-  // heavy-against-real-mass. This keeps the flywheel resisting the
-  // instant snap-to-target, but with enough base punch that low gears
-  // read as torquey rather than gutless.
-  const ACCEL_RATE_RPM_PER_S = 3450; // gear-1 baseline (see GEAR_ACCEL_MULT)
-  // Lowered a lot from the previous tune: releasing the throttle used to
-  // snap RPM back down at 3000 rpm/s, which read as an abrupt cut rather
-  // than an engine coasting down under its own compression/engine-braking.
-  // This is what makes the needle drift down "pelan-pelan" after you let
-  // off the gas, most noticeably right after a shift when the dip hands
-  // off into this same decel chase.
-  const DECEL_RATE_RPM_PER_S = 1500;
-  const SPINDOWN_RATE_RPM_PER_S = 2000; // how fast RPM falls to 0 with ignition off (coasting)
+  // Base rates before the per-gear multiplier below is applied. Now
+  // driven by VEHICLE SETUP's Weight / Engine Power / Torque (higher
+  // power-to-weight → faster accel) and Engine Braking (higher → faster
+  // decel/spindown) — see EngineState.applyVehicleSetup() for the
+  // formula. DEFAULT_* below matches the hand-tuned values this file
+  // used before it became configurable, so the stock profile feels
+  // identical to before.
+  const DEFAULT_ACCEL_RATE_RPM_PER_S = 3450; // gear-1 baseline (see GEAR_ACCEL_MULT)
+  const DEFAULT_DECEL_RATE_RPM_PER_S = 1500;
+  const DEFAULT_SPINDOWN_RATE_RPM_PER_S = 2000; // how fast RPM falls to 0 with ignition off (coasting)
+
+  let ACCEL_RATE_RPM_PER_S = DEFAULT_ACCEL_RATE_RPM_PER_S;
+  let DECEL_RATE_RPM_PER_S = DEFAULT_DECEL_RATE_RPM_PER_S;
+  let SPINDOWN_RATE_RPM_PER_S = DEFAULT_SPINDOWN_RATE_RPM_PER_S;
 
   // Per-gear acceleration multiplier applied on top of ACCEL_RATE_RPM_PER_S.
   // Index 0 = neutral/no gear engaged (kept brisk — revving in neutral
@@ -226,19 +228,47 @@ const RPMSimulator = (() => {
   // still equal the engine's absolute limit: neutral has no drivetrain
   // load to protect, and 6th has nowhere higher to shift into, so
   // hitting the real redline there is correct, not a fallback.
-  const GEAR_REV_LIMIT_RPM = [
-    REV_LIMIT_RPM, // N
-    3300,          // 1
-    4800,          // 2
-    6300,          // 3
-    7800,          // 4
-    8500,          // 5 — now its own ceiling, not a fallback to REV_LIMIT_RPM
-    REV_LIMIT_RPM, // 6 — intentionally the true engine redline (top gear)
+  // Default shape kept for reference; EngineState.applyVehicleSetup()
+  // recomputes and overwrites this (via configure()) every time Idle/
+  // Redline/Max RPM change, from the SAME per-gear upshift points it
+  // builds its GEARS table from — so this can never drift out of sync
+  // with the thresholds AUTO mode actually shifts at.
+  let GEAR_REV_LIMIT_RPM = [
+    DEFAULT_REV_LIMIT_RPM, // N
+    3300,                  // 1
+    4800,                  // 2
+    6300,                  // 3
+    7800,                  // 4
+    8500,                  // 5 — now its own ceiling, not a fallback to REV_LIMIT_RPM
+    DEFAULT_REV_LIMIT_RPM, // 6 — intentionally the true engine redline (top gear)
   ];
 
   function currentRevLimit() {
     const limit = GEAR_REV_LIMIT_RPM[engagedGearIndex];
     return limit !== undefined ? limit : REV_LIMIT_RPM;
+  }
+
+  /**
+   * Adopts a new engine profile from VEHICLE SETUP. Every field is
+   * optional — only what's passed in gets overwritten, so callers can
+   * send a partial update. Values are expected to already be validated
+   * (see vehicle-setup.js); this function trusts them as-is.
+   */
+  function configure(partial = {}) {
+    if (typeof partial.idleRpm === 'number') IDLE_RPM = partial.idleRpm;
+    if (typeof partial.maxRpm === 'number') MAX_RPM = partial.maxRpm;
+    if (typeof partial.redlineRpm === 'number') REDLINE_RPM = partial.redlineRpm;
+    if (typeof partial.revLimitRpm === 'number') REV_LIMIT_RPM = partial.revLimitRpm;
+    if (typeof partial.accelRateBase === 'number') ACCEL_RATE_RPM_PER_S = partial.accelRateBase;
+    if (typeof partial.decelRate === 'number') DECEL_RATE_RPM_PER_S = partial.decelRate;
+    if (typeof partial.spindownRate === 'number') SPINDOWN_RATE_RPM_PER_S = partial.spindownRate;
+    if (Array.isArray(partial.gearRevLimitRpm) && partial.gearRevLimitRpm.length === 7) {
+      GEAR_REV_LIMIT_RPM = partial.gearRevLimitRpm.slice();
+    }
+    // Keep currentRpm inside the new ceiling immediately (e.g. Max RPM
+    // dialed down below where the needle currently sits) instead of
+    // waiting for the next step() to clamp it.
+    currentRpm = Math.min(currentRpm, MAX_RPM);
   }
 
   function isDipping() {
@@ -437,10 +467,15 @@ const RPMSimulator = (() => {
     setThrottle,
     setGear,
     triggerShiftDip,
-    IDLE_RPM,
-    MAX_RPM,
-    REDLINE_RPM,
-    REV_LIMIT_RPM,
+    configure,
+    // Function getters, not plain properties — IDLE_RPM/MAX_RPM/etc.
+    // above are reassigned by configure(), so a value captured once at
+    // module-load time would go stale after the first Vehicle Setup
+    // change (same reasoning as Gearbox's getGearRatios()/etc.).
+    getIdleRpm: () => IDLE_RPM,
+    getMaxRpm: () => MAX_RPM,
+    getRedlineRpm: () => REDLINE_RPM,
+    getRevLimitRpm: () => REV_LIMIT_RPM,
     GEAR_DIP_FRACTION,
   };
 })();

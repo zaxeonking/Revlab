@@ -38,22 +38,39 @@ const EngineState = (() => {
   const AMBIENT_TEMP_C = 24;
   const OPERATING_TEMP_C = 92;
   const MAX_BOOST_BAR = 1.4;
-  // Dial ceiling for the speedometer face — kept as a display constant
-  // (fed to SpeedGauge for its tick scale), separate now from how speed
-  // is actually calculated below. Speed itself no longer comes from a
-  // per-gear lookup ceiling — see Gearbox.speedForRpm(): it's genuine
-  // gear-ratio × final-drive × wheel-circumference × efficiency math
-  // (js/modules/gearbox.js), so RPM and speed are now ALWAYS related
-  // through the actual mechanical ratio of whichever gear is engaged,
-  // not an arbitrary "gear N tops out at X km/h" table. Neutral (index
-  // 0) still has no mechanical path to the wheels at all — see below,
-  // displayed speed is hard-locked to 0 there regardless of RPM.
-  const MAX_SPEED_KMH = 260;
+  // Dial ceiling for the speedometer face — kept as a display value (fed
+  // to SpeedGauge for its tick scale) that now ALSO acts as a real
+  // governor: deriveFromFrame() below caps the driven speed target at
+  // this number, so VEHICLE SETUP's "Top Speed" parameter is more than
+  // cosmetic. Speed itself still comes from genuine gear-ratio × final-
+  // drive × wheel-circumference × efficiency math (js/modules/gearbox.js)
+  // up to that cap — RPM and speed are always related through the actual
+  // mechanical ratio of whichever gear is engaged, not an arbitrary
+  // "gear N tops out at X km/h" table. Neutral (index 0) still has no
+  // mechanical path to the wheels at all — displayed speed is hard-locked
+  // to 0 there regardless of RPM.
+  // `let`, not `const`: VEHICLE SETUP can change this at runtime — see
+  // applyVehicleSetup() below.
+  const DEFAULT_MAX_SPEED_KMH = 260;
+  let MAX_SPEED_KMH = DEFAULT_MAX_SPEED_KMH;
   const KMH_PER_MPH = 1.609344;
 
-  const MAX_RPM = RPMSimulator.MAX_RPM;
-  const IDLE_RPM = RPMSimulator.IDLE_RPM;
-  const REDLINE_RPM = RPMSimulator.REDLINE_RPM;
+  // Baseline vehicle spec these formulas were tuned against — used only
+  // to turn VEHICLE SETUP's absolute Weight/Power/Torque numbers into a
+  // relative performance factor (see applyVehicleSetup()). Matches
+  // VehicleSetup's own DEFAULT_* so the stock profile reproduces
+  // RPMSimulator's original hand-tuned feel exactly.
+  const BASELINE_WEIGHT_KG = 1350;
+  const BASELINE_POWER_HP = 420;
+  const BASELINE_TORQUE_NM = 430;
+
+  // `let`, not `const`: these three mirror whatever VEHICLE SETUP has
+  // currently applied (see applyVehicleSetup()) — everything below that
+  // used to read RPMSimulator.MAX_RPM etc. as a load-time constant now
+  // reads these instead, kept in lockstep by applyVehicleSetup().
+  let MAX_RPM = RPMSimulator.getMaxRpm();
+  let IDLE_RPM = RPMSimulator.getIdleRpm();
+  let REDLINE_RPM = RPMSimulator.getRedlineRpm();
 
   // ---- Gear table -----------------------------------------------------
   // Gears are 1-indexed into this array; index 0 is neutral. Each entry
@@ -91,26 +108,68 @@ const EngineState = (() => {
     return Math.round(prevUpAt * (1 - fraction)) - DOWNSHIFT_SAFETY_MARGIN_RPM;
   }
 
-  const GEARS = [
-    { label: 'N', upAt: 1200, downAt: null },
-    // 1st–4th upAt now equal that gear's own rev-limiter ceiling
-    // (RPMSimulator.GEAR_REV_LIMIT_RPM: 3300 / 4800 / 6300 / 7800) —
-    // previously AUTO upshifted at much lower, "comfort" points (2000 /
-    // 3500 / 5000 / 6500) that had nothing to do with each gear's actual
-    // limiter, so AUTO was pulling out of every low gear early ("kecepetan")
-    // while MANUAL let you rev the same gear a couple thousand rpm further.
-    // Now AUTO holds each gear out to (essentially) its own redline before
-    // shifting, same ceiling MANUAL respects — a shift now happens right
-    // as the limiter would've started cutting fuel anyway, instead of well
-    // before it.
-    { label: '1', upAt: 3300, downAt: null },
-    { label: '2', upAt: 4800, downAt: safeDownAt(3300, 2) },
-    { label: '3', upAt: 6300, downAt: safeDownAt(4800, 3) },
-    { label: '4', upAt: 7800, downAt: safeDownAt(6300, 4) },
-    { label: '5', upAt: 8000, downAt: safeDownAt(7800, 5) },
-    { label: '6', upAt: null, downAt: safeDownAt(8000, 6) },
-  ];
-  const MAX_GEAR_INDEX = GEARS.length - 1;
+  /**
+   * Builds the gear table (upshift/downshift thresholds) AND the per-gear
+   * rev-limiter ceilings RPMSimulator uses, from just three VEHICLE SETUP
+   * numbers: idle/redline/max RPM. Both used to be hand-typed constants;
+   * deriving them from formulas here is what lets Redline RPM / Max RPM
+   * actually move the gearbox's shift points instead of only moving the
+   * gauge needle's ceiling.
+   *
+   * The fractions below (0.375 / 0.545 / 0.716 / 0.886 / 0.909 of the
+   * fuel-cut ceiling) are chosen to reproduce the ORIGINAL hand-tuned
+   * upshift points (3300/4800/6300/7800/8000) exactly when fed the
+   * original defaults (idle 800, redline 7500, max 9000) — so the stock
+   * profile behaves identically to before this became configurable.
+   */
+  function buildGears(idleRpm, redlineRpm, maxRpm) {
+    // Fuel-cut ceiling: a little under Max RPM, same "headroom below the
+    // absolute limit" idea the original REV_LIMIT_RPM (8800 vs a 9000
+    // dial ceiling) used.
+    const revLimit = Math.max(redlineRpm + 200, maxRpm - 200);
+
+    const UPSHIFT_FRACTIONS = [0.375, 0.545, 0.716, 0.886, 0.909]; // gears 1..5
+    const upAtArr = UPSHIFT_FRACTIONS.map((f) => Math.round(f * revLimit));
+    // Neutral → 1st happens once RPM clears a bit above idle — scales
+    // with Idle RPM so a higher-idling engine still needs a deliberate
+    // stab of throttle to leave neutral, not just its own idle lope.
+    const neutralUpAt = Math.max(idleRpm + 200, Math.round(idleRpm * 1.5));
+
+    const gears = [
+      { label: 'N', upAt: neutralUpAt, downAt: null },
+      // 1st–4th upAt equal that gear's own rev-limiter ceiling — AUTO
+      // holds each gear out to (essentially) its own redline before
+      // shifting, same ceiling MANUAL respects — a shift happens right
+      // as the limiter would've started cutting fuel anyway.
+      { label: '1', upAt: upAtArr[0], downAt: null },
+      { label: '2', upAt: upAtArr[1], downAt: safeDownAt(upAtArr[0], 2) },
+      { label: '3', upAt: upAtArr[2], downAt: safeDownAt(upAtArr[1], 3) },
+      { label: '4', upAt: upAtArr[3], downAt: safeDownAt(upAtArr[2], 4) },
+      { label: '5', upAt: upAtArr[4], downAt: safeDownAt(upAtArr[3], 5) },
+      { label: '6', upAt: null, downAt: safeDownAt(upAtArr[4], 6) },
+    ];
+
+    // Per-gear fuel-cut ceiling RPMSimulator actually enforces (see
+    // rpm-simulator.js currentRevLimit()) — 1st–4th match their own
+    // upAt exactly (AUTO shifts you out before you'd ever reach it),
+    // 5th gets a little headroom past its upAt (manual-mode-only, same
+    // 1.0625x the original 8000→8500 ratio used), neutral and 6th (top
+    // gear) both use the engine's true ceiling.
+    const gearRevLimitRpm = [
+      revLimit,
+      upAtArr[0],
+      upAtArr[1],
+      upAtArr[2],
+      upAtArr[3],
+      Math.round(upAtArr[4] * 1.0625),
+      revLimit,
+    ];
+
+    return { gears, revLimit, gearRevLimitRpm };
+  }
+
+  let GEARS = buildGears(IDLE_RPM, REDLINE_RPM, MAX_RPM).gears;
+  let MAX_GEAR_INDEX = GEARS.length - 1;
 
   // How long (ms) the gearbox "locks" after any shift before it will
   // shift again — models clutch/synchro engagement time. This is what
@@ -142,6 +201,7 @@ const EngineState = (() => {
     revLimiting: false,
     maxRpmK: MAX_RPM / 1000,
     redlineStartK: REDLINE_RPM / 1000,
+    maxSpeedKmh: MAX_SPEED_KMH,
   };
 
   // Internal gearbox state, separate from the public snapshot above so
@@ -336,7 +396,10 @@ const EngineState = (() => {
     // arbitrary table.
     let targetSpeedKmh = 0;
     if (frame.engineOn && gearIndex > 0) {
-      targetSpeedKmh = Gearbox.speedForRpm(frame.rpm, gearIndex);
+      // Governor: VEHICLE SETUP's Top Speed caps the driven target
+      // regardless of what the raw gear-ratio math would otherwise
+      // produce — same as a real ECU/speed limiter cutting in.
+      targetSpeedKmh = Math.min(Gearbox.speedForRpm(frame.rpm, gearIndex), MAX_SPEED_KMH);
     }
 
     const nowTs = now();
@@ -440,6 +503,110 @@ const EngineState = (() => {
     return getState();
   }
 
+  function clamp(v, lo, hi) {
+    return Math.min(Math.max(v, lo), hi);
+  }
+
+  /**
+   * The one place VEHICLE SETUP's 12 parameters actually reach the
+   * simulation. Called by VehicleSetup (js/modules/vehicle-setup.js)
+   * once at boot (with its defaults, a no-op vs. the original hand-tuned
+   * behavior) and again every time the driver changes + validates a
+   * field, or hits RESET SETUP.
+   *
+   * `setup` shape: { weightKg, enginePowerHp, torqueNm, idleRpm,
+   * redlineRpm, maxRpm, gearRatios: [r1..r6], finalDrive, wheelRadiusCm,
+   * throttleResponse (0–100), engineBraking (0–100), topSpeedKmh }
+   *
+   * Everything here is deterministic arithmetic on the inputs — no
+   * Math.random(), same principle every other module in REVLAB follows.
+   */
+  function applyVehicleSetup(setup) {
+    IDLE_RPM = setup.idleRpm;
+    REDLINE_RPM = setup.redlineRpm;
+    MAX_RPM = setup.maxRpm;
+    MAX_SPEED_KMH = setup.topSpeedKmh;
+
+    const built = buildGears(IDLE_RPM, REDLINE_RPM, MAX_RPM);
+    GEARS = built.gears;
+    MAX_GEAR_INDEX = GEARS.length - 1;
+    // Keep the current gear in range in the (currently impossible, but
+    // cheap to guard) case the gear count ever changes.
+    if (gearIndex > MAX_GEAR_INDEX) gearIndex = MAX_GEAR_INDEX;
+
+    // ---- Performance factor: Weight / Engine Power / Torque → accel ----
+    // Power and torque both raise the accel rate, lighter weight raises
+    // it too (more power-to-weight); weighted blend so no single number
+    // dominates. Clamped to a sane multiplier band so extreme setup
+    // values (e.g. 60hp + 3000kg) slow the sim down a lot without ever
+    // fully freezing the needle or making it snap instantly.
+    const powerFactor = setup.enginePowerHp / BASELINE_POWER_HP;
+    const torqueFactor = setup.torqueNm / BASELINE_TORQUE_NM;
+    const weightFactor = BASELINE_WEIGHT_KG / setup.weightKg;
+    const perfFactor = clamp(
+      powerFactor * 0.40 + torqueFactor * 0.35 + weightFactor * 0.25,
+      0.25,
+      3.5
+    );
+    const accelRateBase = Math.round(3450 * perfFactor);
+
+    // ---- Engine Braking (0–100) → decel / spindown rate ----
+    // Linear ramps chosen so the DEFAULT (50) reproduces RPMSimulator's
+    // original hand-tuned DECEL/SPINDOWN rates exactly.
+    const decelRate = Math.round(300 + setup.engineBraking * 24);   // 0→300, 50→1500, 100→2700
+    const spindownRate = Math.round(500 + setup.engineBraking * 30); // 0→500, 50→2000, 100→3500
+
+    RPMSimulator.configure({
+      idleRpm: IDLE_RPM,
+      maxRpm: MAX_RPM,
+      redlineRpm: REDLINE_RPM,
+      revLimitRpm: built.revLimit,
+      accelRateBase,
+      decelRate,
+      spindownRate,
+      gearRevLimitRpm: built.gearRevLimitRpm,
+    });
+    RPMSimulator.setGear(gearIndex);
+
+    Gearbox.configure({
+      gearRatios: setup.gearRatios,
+      finalDriveRatio: setup.finalDrive,
+      wheelRadiusCm: setup.wheelRadiusCm,
+    });
+
+    // ---- Throttle Response (0–100) → pedal ramp rate ----
+    // Chosen so the DEFAULT (60) reproduces ThrottleController's
+    // original 260 (up) / 190 (down) %/s ramp exactly.
+    const rampUpRate = 40 + setup.throttleResponse * (220 / 60);
+    ThrottleController.configure({
+      rampUpRate,
+      rampDownRate: rampUpRate * (190 / 260),
+    });
+
+    // Keep the public snapshot's dial-scale fields in sync immediately
+    // (rather than waiting for the next RPMSimulator frame) so the
+    // gauges can rescale the instant Setup is applied, even while the
+    // engine is off and no frames are ticking.
+    state.maxRpmK = MAX_RPM / 1000;
+    state.redlineStartK = REDLINE_RPM / 1000;
+    state.maxSpeedKmh = MAX_SPEED_KMH;
+
+    notify();
+    return getState();
+  }
+
+  /** Live read of the drivetrain spec panel numbers — a function (not a
+   *  cached property) because Gearbox's values can change at runtime via
+   *  applyVehicleSetup() above. */
+  function getDrivetrainSpec() {
+    return {
+      gearRatios: Gearbox.getGearRatios(),
+      finalDriveRatio: Gearbox.getFinalDrive(),
+      wheelCircumferenceM: Gearbox.getWheelCircumference(),
+      drivetrainEfficiency: Gearbox.getDrivetrainEfficiency(),
+    };
+  }
+
   return {
     init,
     subscribe,
@@ -450,16 +617,9 @@ const EngineState = (() => {
     setGearMode,
     shiftUp,
     shiftDown,
-    maxRpmK: MAX_RPM / 1000,
-    redlineStartK: REDLINE_RPM / 1000,
-    maxSpeedKmh: MAX_SPEED_KMH,
+    applyVehicleSetup,
+    getDrivetrainSpec,
+    getMaxSpeedKmh: () => MAX_SPEED_KMH,
     KMH_PER_MPH,
-    // Drivetrain spec pass-through — same numbers Gearbox.speedForRpm()
-    // above actually uses, exposed so the UI can display the real spec
-    // instead of a second, potentially-drifting copy of these numbers.
-    gearRatios: Gearbox.GEAR_RATIOS,
-    finalDriveRatio: Gearbox.FINAL_DRIVE_RATIO,
-    wheelCircumferenceM: Gearbox.WHEEL_CIRCUMFERENCE_M,
-    drivetrainEfficiency: Gearbox.DRIVETRAIN_EFFICIENCY,
   };
 })();

@@ -103,6 +103,12 @@
           <span class="field__label">DRIVETRAIN EFFICIENCY</span>
           <div class="field__value field__value--mono" id="gearboxEfficiency">—</div>
         </div>
+
+        <button
+          id="vehicleSetupOpenBtn"
+          class="btn btn--setup"
+          type="button"
+        >VEHICLE SETUP</button>
       </section>
 
       <!-- CENTER: HERO — SPEEDOMETER + TACHOMETER, side by side -->
@@ -346,6 +352,42 @@
       >▼</button>
     </div>
 
+    <!-- ============ VEHICLE SETUP (modal) ============ -->
+    <!-- Fields inside .setup-grid / .setup-gearratios are built by
+         ui-controller.js from VehicleSetup's parameter specs (see
+         js/modules/vehicle-setup.js) — not hand-typed here, so the form
+         can never disagree with the validation rules actually enforced. -->
+    <div class="modal-overlay" id="vehicleSetupOverlay" data-open="false" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vehicleSetupTitle">
+        <div class="modal__header">
+          <h2 class="modal__title" id="vehicleSetupTitle">VEHICLE SETUP</h2>
+          <button class="modal__close" id="vehicleSetupCloseBtn" type="button" aria-label="Tutup Vehicle Setup">✕</button>
+        </div>
+
+        <div class="modal__body">
+          <section class="setup-group">
+            <h3 class="setup-group__title">ENGINE &amp; PERFORMANCE</h3>
+            <div class="setup-grid" id="vehicleSetupEngineGrid"></div>
+          </section>
+
+          <section class="setup-group">
+            <h3 class="setup-group__title">DRIVETRAIN</h3>
+            <div class="setup-grid" id="vehicleSetupDrivetrainGrid"></div>
+            <p class="field__label setup-gearratios__label">GEAR RATIOS (1→6)</p>
+            <div class="setup-gearratios" id="vehicleSetupGearRatios"></div>
+          </section>
+        </div>
+
+        <div class="modal__footer">
+          <p class="field__hint">Setiap perubahan divalidasi (min/max) dan langsung diterapkan ke simulasi.</p>
+          <div class="modal__actions">
+            <button class="btn btn--danger" id="vehicleSetupResetBtn" type="button">RESET SETUP</button>
+            <button class="btn btn--primary" id="vehicleSetupDoneBtn" type="button">SELESAI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="js/modules/gauge.js"></script>
@@ -353,6 +395,7 @@
   <script src="js/modules/rpm-simulator.js"></script>
   <script src="js/modules/gearbox.js"></script>
   <script src="js/modules/engine-state.js"></script>
+  <script src="js/modules/vehicle-setup.js"></script>
   <script src="js/modules/audio-engine.js"></script>
   <script src="js/modules/throttle-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>

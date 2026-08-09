@@ -35,8 +35,15 @@
  */
 
 const ThrottleController = (() => {
-  const RAMP_UP_RATE_PER_S = 260;   // %/s — how fast the "virtual pedal" can go from 0 to 100
-  const RAMP_DOWN_RATE_PER_S = 190; // %/s — slightly slower release, feels less twitchy than instant-0
+  // Now driven by VEHICLE SETUP's "Throttle Response" parameter (see
+  // configure() below / EngineState.applyVehicleSetup()) — DEFAULT_*
+  // matches the original hand-tuned rates so the stock profile behaves
+  // identically to before this became configurable.
+  const DEFAULT_RAMP_UP_RATE_PER_S = 260;   // %/s — how fast the "virtual pedal" can go from 0 to 100
+  const DEFAULT_RAMP_DOWN_RATE_PER_S = 190; // %/s — slightly slower release, feels less twitchy than instant-0
+
+  let RAMP_UP_RATE_PER_S = DEFAULT_RAMP_UP_RATE_PER_S;
+  let RAMP_DOWN_RATE_PER_S = DEFAULT_RAMP_DOWN_RATE_PER_S;
 
   const MAX_DT_S = 0.05;
 
@@ -128,6 +135,14 @@ const ThrottleController = (() => {
 
   function getPercent() {
     return rampPercent;
+  }
+
+  /** Adopts new ramp rates from VEHICLE SETUP's Throttle Response
+   *  parameter. Takes effect on the very next loop() tick — no restart
+   *  needed, held inputs just start ramping at the new rate mid-press. */
+  function configure({ rampUpRate, rampDownRate } = {}) {
+    if (typeof rampUpRate === 'number' && rampUpRate > 0) RAMP_UP_RATE_PER_S = rampUpRate;
+    if (typeof rampDownRate === 'number' && rampDownRate > 0) RAMP_DOWN_RATE_PER_S = rampDownRate;
   }
 
   // ------------------------------------------------------------------
@@ -238,5 +253,6 @@ const ThrottleController = (() => {
     isHeld,
     press,
     release,
+    configure,
   };
 })();

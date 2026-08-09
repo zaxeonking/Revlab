@@ -12,22 +12,33 @@
  * AudioContext is deliberately NOT created here, since this runs before
  * any user gesture. UIController's Start Engine click handler is what
  * calls AudioEngine.init(), the first time the button is pressed.
+ *
+ * Boot order matters here: EngineState.init() first (starts the
+ * RPMSimulator loop with its own built-in defaults), then
+ * VehicleSetup.init() (formally applies VehicleSetup's parameter
+ * defaults on top — a no-op in practice since the two sets of defaults
+ * are kept identical, but from this point on VehicleSetup is the single
+ * source of truth for every tunable in the VEHICLE SETUP panel), THEN
+ * SpeedGauge.init() reads the now-authoritative top speed for its dial
+ * scale, and finally UIController.init() builds the Vehicle Setup form
+ * itself from VehicleSetup's param specs.
  * -----------------------------------------------------------------------
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   const gauge = Gauge.init();
-  // EngineState's maxSpeedKmh/KMH_PER_MPH are static exports (available
-  // as soon as the module's IIFE has run, no EngineState.init() needed
-  // yet) — SpeedGauge just needs them to know its dial's top-speed scale.
+  EngineState.init();
+  VehicleSetup.init();
+
   const speedGauge = SpeedGauge.init({
-    maxSpeedKmh: EngineState.maxSpeedKmh,
+    maxSpeedKmh: EngineState.getMaxSpeedKmh(),
     kmhPerMph: EngineState.KMH_PER_MPH,
   });
-  EngineState.init();
+
   UIController.init(gauge, speedGauge);
 
   console.info('[REVLAB] Cockpit UI loaded. RPMSimulator running (rAF loop, deterministic physics).');
+  console.info('[VehicleSetup] current parameters:', VehicleSetup.getAll());
   console.info('[RPMSimulator] current state:', RPMSimulator.getState());
   console.info('[AudioEngine] current state:', AudioEngine.getState());
 });

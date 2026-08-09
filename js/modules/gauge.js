@@ -16,8 +16,15 @@ const Gauge = (() => {
   // Gauge sweeps from -130deg to +130deg (0 at bottom-left, max at bottom-right)
   const ANGLE_START = -130;
   const ANGLE_END = 130;
-  const MAX_RPM_K = 9; // gauge face goes 0..9 (x1000 RPM) — placeholder scale
-  const REDLINE_START_K = 7.5;
+  // Face scale — used to be fixed placeholders. VEHICLE SETUP's Max RPM /
+  // Redline RPM now drive these via reconfigure() below, so the dial
+  // itself rescales (tick labels + redline arc) instead of only the
+  // needle behaving differently against a stale face.
+  let MAX_RPM_K = 9; // gauge face goes 0..MAX_RPM_K (x1000 RPM)
+  let REDLINE_START_K = 7.5;
+
+  let ticksGroupEl = null;
+  let redlinePathEl = null;
 
   function polarToXY(cx, cy, r, angleDeg) {
     const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -95,21 +102,37 @@ const Gauge = (() => {
     needleGroupEl.style.transform = `rotate(${angle.toFixed(2)}deg)`;
   }
 
+  /**
+   * Rescales the dial face itself — rebuilds tick labels and the redline
+   * arc for a new Max RPM / Redline RPM (in thousands), leaving the
+   * needle's current angle alone (the next setValueK() call moves it).
+   * Called from ui-controller.js whenever EngineState's live maxRpmK /
+   * redlineStartK actually change, guarded so it doesn't rebuild the
+   * SVG every animation frame for nothing.
+   */
+  function reconfigure(maxRpmK, redlineStartK) {
+    if (typeof maxRpmK === 'number' && maxRpmK > 0) MAX_RPM_K = maxRpmK;
+    if (typeof redlineStartK === 'number' && redlineStartK >= 0) REDLINE_START_K = redlineStartK;
+    if (ticksGroupEl) buildTicks(ticksGroupEl);
+    if (redlinePathEl) buildRedlineArc(redlinePathEl);
+  }
+
   function init() {
-    const ticksGroup = document.getElementById('gaugeTicks');
-    const redlinePath = document.getElementById('gaugeRedline');
+    ticksGroupEl = document.getElementById('gaugeTicks');
+    redlinePathEl = document.getElementById('gaugeRedline');
     const needleGroup = document.getElementById('gaugeNeedle');
 
-    if (!ticksGroup || !redlinePath || !needleGroup) return null;
+    if (!ticksGroupEl || !redlinePathEl || !needleGroup) return null;
 
-    buildTicks(ticksGroup);
-    buildRedlineArc(redlinePath);
+    buildTicks(ticksGroupEl);
+    buildRedlineArc(redlinePathEl);
     setNeedleValueK(needleGroup, 0); // idle / off position
 
     return {
       setValueK: (valueK) => setNeedleValueK(needleGroup, valueK),
-      maxRpmK: MAX_RPM_K,
-      redlineStartK: REDLINE_START_K,
+      reconfigure,
+      get maxRpmK() { return MAX_RPM_K; },
+      get redlineStartK() { return REDLINE_START_K; },
     };
   }
 

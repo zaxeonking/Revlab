@@ -46,26 +46,51 @@ const Gearbox = (() => {
   // ratio = less torque, more speed per RPM (6th, "overdrive"-ish).
   // Descending across the array is what makes each successive gear
   // "taller" than the last, same as a real manual gearbox.
-  const GEAR_RATIOS = [null, 3.850, 2.615, 1.929, 1.529, 1.276, 1.061];
+  //
+  // These used to be fixed constants. They're now mutable, driven by
+  // the VEHICLE SETUP panel (js/modules/vehicle-setup.js) — configure()
+  // below is the single place that writes to them, so speedForRpm() /
+  // rpmForSpeed() always use whatever spec the driver has dialed in.
+  // DEFAULT_* is kept so VehicleSetup / a "Reset Setup" action always
+  // has a known-good baseline to fall back to.
+  const DEFAULT_GEAR_RATIOS = [null, 3.850, 2.615, 1.929, 1.529, 1.276, 1.061];
+  const DEFAULT_FINAL_DRIVE_RATIO = 3.900;
+  const DEFAULT_WHEEL_RADIUS_CM = 31.5; // → circumference ≈ 1.98m (205/55R16-ish)
 
-  // Single final-drive (differential) ratio applied after the gearbox,
-  // same for every gear — matches how a real drivetrain is laid out
-  // (one differential, N gear ratios ahead of it).
-  const FINAL_DRIVE_RATIO = 3.900;
-
-  // Rolling circumference of the driven wheel, in meters — this is what
-  // actually converts "wheel revolutions" into "distance travelled".
-  // 1.98m corresponds to a roughly 205/55R16-sized tire.
-  const WHEEL_CIRCUMFERENCE_M = 1.98;
+  let GEAR_RATIOS = DEFAULT_GEAR_RATIOS.slice();
+  let FINAL_DRIVE_RATIO = DEFAULT_FINAL_DRIVE_RATIO;
+  let WHEEL_CIRCUMFERENCE_M = 2 * Math.PI * (DEFAULT_WHEEL_RADIUS_CM / 100);
 
   // Fixed mechanical-loss factor (belt/gear friction, etc.) between the
   // flywheel and the road. Applied as a flat multiplier on the final
   // speed number — it's a deterministic derating, not slip or randomness,
   // so the same RPM in the same gear always yields the same (slightly
-  // discounted) speed.
+  // discounted) speed. Not part of the VEHICLE SETUP parameter list, so
+  // this one stays a fixed constant.
   const DRIVETRAIN_EFFICIENCY = 0.92;
 
   const KMH_PER_WHEEL_RPM_PER_METER = 0.06; // 60 min/h ÷ 1000 m/km
+
+  /**
+   * Applies a new drivetrain spec from VEHICLE SETUP. All inputs are
+   * expected to already be validated/clamped (see vehicle-setup.js) —
+   * this function just adopts them; it doesn't re-validate ranges.
+   *   gearRatios     — array of 6 numbers (1st→6th), null entries kept
+   *                     out; index 0 (neutral) is always forced to null.
+   *   finalDriveRatio — single number
+   *   wheelRadiusCm   — wheel radius in cm; converted to circumference
+   */
+  function configure({ gearRatios, finalDriveRatio, wheelRadiusCm } = {}) {
+    if (Array.isArray(gearRatios) && gearRatios.length === 6) {
+      GEAR_RATIOS = [null, ...gearRatios.map((r) => Number(r))];
+    }
+    if (typeof finalDriveRatio === 'number' && finalDriveRatio > 0) {
+      FINAL_DRIVE_RATIO = finalDriveRatio;
+    }
+    if (typeof wheelRadiusCm === 'number' && wheelRadiusCm > 0) {
+      WHEEL_CIRCUMFERENCE_M = 2 * Math.PI * (wheelRadiusCm / 100);
+    }
+  }
 
   function gearRatioFor(gearIndex) {
     return GEAR_RATIOS[gearIndex] !== undefined ? GEAR_RATIOS[gearIndex] : null;
@@ -104,11 +129,21 @@ const Gearbox = (() => {
     return wheelRpm * reduction;
   }
 
+  // Exposed as functions, not plain properties — GEAR_RATIOS/
+  // FINAL_DRIVE_RATIO/WHEEL_CIRCUMFERENCE_M above are *reassigned* (not
+  // mutated in place) by configure(), so a property captured once at
+  // module-load time (the old `GEAR_RATIOS: GEAR_RATIOS` shorthand)
+  // would silently go stale after the first Vehicle Setup change.
+  // Callers that want live values must call these, not cache the array.
   return {
-    GEAR_RATIOS,
-    FINAL_DRIVE_RATIO,
-    WHEEL_CIRCUMFERENCE_M,
-    DRIVETRAIN_EFFICIENCY,
+    getGearRatios: () => GEAR_RATIOS,
+    getFinalDrive: () => FINAL_DRIVE_RATIO,
+    getWheelCircumference: () => WHEEL_CIRCUMFERENCE_M,
+    getDrivetrainEfficiency: () => DRIVETRAIN_EFFICIENCY,
+    DEFAULT_GEAR_RATIOS,
+    DEFAULT_FINAL_DRIVE_RATIO,
+    DEFAULT_WHEEL_RADIUS_CM,
+    configure,
     gearRatioFor,
     totalReductionFor,
     speedForRpm,

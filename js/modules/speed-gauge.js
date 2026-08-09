@@ -147,6 +147,20 @@ const SpeedGauge = (() => {
     buildTicks();
   }
 
+  /**
+   * Rescales the dial face for a new top speed (VEHICLE SETUP's Top
+   * Speed parameter) — rebuilds tick labels and the warn arc. Needle
+   * angle is left alone (it's a fraction of maxSpeedKmh already, see
+   * setSpeedKmh — the NEXT frame's call naturally re-derives the right
+   * angle against the new ceiling).
+   */
+  function reconfigure(nextMaxSpeedKmh) {
+    if (typeof nextMaxSpeedKmh !== 'number' || nextMaxSpeedKmh <= 0) return;
+    maxSpeedKmh = nextMaxSpeedKmh;
+    buildTicks();
+    buildWarnArc();
+  }
+
   function init(config = {}) {
     ticksGroupEl = document.getElementById('speedGaugeTicks');
     warnArcEl = document.getElementById('speedGaugeWarnArc');
@@ -164,7 +178,8 @@ const SpeedGauge = (() => {
     return {
       setSpeedKmh,
       setUnit,
-      maxSpeedKmh,
+      reconfigure,
+      get maxSpeedKmh() { return maxSpeedKmh; },
       warnZoneStartFraction: WARN_ZONE_START_FRACTION,
     };
   }

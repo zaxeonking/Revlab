@@ -42,11 +42,15 @@ revlab/
 ├── js/
 │   ├── main.js                 Entry point, inisialisasi modul saat load
 │   └── modules/
-│       ├── gauge.js            Render tachometer SVG (ticks, redline, jarum)
-│       ├── rpm-simulator.js    Simulasi RPM fisik nyata (rAF loop, inersia, rev limiter)
-│       ├── engine-state.js     Telemetri turunan dari RPM (gear/speed/temp/boost) + pub/sub
+│       ├── gauge.js            Tachometer SVG — reconfigure() untuk rescale (VEHICLE SETUP)
+│       ├── speed-gauge.js      Speedometer SVG — reconfigure() untuk rescale (VEHICLE SETUP)
+│       ├── rpm-simulator.js    Simulasi RPM fisik nyata — configure() (VEHICLE SETUP)
+│       ├── gearbox.js          Matematika drivetrain murni — configure() (VEHICLE SETUP)
+│       ├── engine-state.js     Telemetri turunan dari RPM + applyVehicleSetup() (orkestrator)
+│       ├── vehicle-setup.js    Data + validasi 12 parameter panel VEHICLE SETUP
+│       ├── throttle-controller.js  Input press/hold — configure() (VEHICLE SETUP)
 │       ├── audio-engine.js     STUB — kerangka API, belum ada Web Audio API
-│       └── ui-controller.js    Wiring DOM ⇄ EngineState (render tiap frame + event)
+│       └── ui-controller.js    Wiring DOM ⇄ EngineState + form modal VEHICLE SETUP
 └── README.md
 ```
 
@@ -70,6 +74,7 @@ revlab/
 | **Simulasi RPM nyata**             | ✅ **rAF loop, inersia, rev limiter — lihat di bawah** |
 | **Gearbox / drivetrain math**      | ✅ **gear ratio × final drive × keliling roda × efisiensi — lihat di bawah** |
 | **Kontrol gear (keyboard)**        | ✅ **Shift = up, Ctrl = down — otomatis pindah ke MANUAL** |
+| **VEHICLE SETUP (12 parameter)**   | ✅ **memengaruhi simulasi langsung, validasi min/max, RESET SETUP — lihat di bawah** |
 | Audio engine (Web Audio API)       | 🔲 belum diimplementasikan — hanya stub          |
 
 ## Simulasi RPM (`rpm-simulator.js`)
@@ -298,3 +303,70 @@ tidak ada file UI yang perlu disentuh.
 - Sambungkan suara ke rev limiter (mis. suara "sputter" saat fuel cut).
 - Model termal yang lebih realistis di `engine-state.js` (gear ratio /
   drivetrain sudah realistis — lihat `gearbox.js`).
+
+## VEHICLE SETUP (`vehicle-setup.js`)
+
+Panel baru — tombol **VEHICLE SETUP** di bawah spec POWERTRAIN membuka
+modal berisi 12 parameter kendaraan yang bisa diubah, dengan validasi
+min/max dan tombol **RESET SETUP**. Semua field digenerate dari spec di
+`js/modules/vehicle-setup.js` (bukan diketik manual di `index.html`), dan
+setiap perubahan langsung diterapkan ke simulasi — tidak ada tombol
+"Apply" terpisah.
+
+### Parameter dan efeknya ke simulasi
+
+| Parameter | Range | Efek ke simulasi |
+|---|---|---|
+| **Weight** | 700–3000 kg | Menurunkan/menaikkan laju akselerasi RPM (lebih berat → tarikan lebih lambat) |
+| **Engine Power** | 60–1200 HP | Menaikkan laju akselerasi RPM |
+| **Torque** | 60–1400 Nm | Menaikkan laju akselerasi RPM |
+| **Idle RPM** | 500–1500 | RPM yang dituju mesin saat throttle 0% (mesin idle) |
+| **Redline RPM** | 4000–11000 | Awal zona redline di gauge + memengaruhi titik pindah gigi AUTO |
+| **Max RPM** | 4500–12000 | Batas fuel-cut absolut + skala ujung gauge RPM |
+| **Gear Ratios (1→6)** | 0.700–5.500 masing-masing | Hubungan RPM↔speed per gigi (`Gearbox.speedForRpm`) |
+| **Final Drive** | 2.000–6.000 | Hubungan RPM↔speed di semua gigi |
+| **Wheel Radius** | 22–40 cm | Keliling roda → hubungan RPM↔speed di semua gigi |
+| **Throttle Response** | 0–100% | Kecepatan ramp pedal gas dari 0→100% (`ThrottleController`) |
+| **Engine Braking** | 0–100% | Kecepatan RPM turun saat throttle dilepas / mesin dimatikan |
+| **Top Speed** | 80–400 km/h | Governor kecepatan (hard cap) + skala dial speedometer |
+
+Pada nilai default, kalkulasi di atas menghasilkan angka yang **identik**
+dengan konstanta hasil tuning manual sebelumnya (idle 800, redline 7500,
+max 9000, rasio gigi 3.850/2.615/1.929/1.529/1.276/1.061, final drive
+3.900, radius roda 31.5cm ≈ keliling 1.98m, dst) — jadi menambahkan panel
+ini tidak mengubah perilaku default simulasi, hanya membuatnya bisa
+diubah.
+
+### Validasi
+
+Setiap field divalidasi terhadap min/max saat `change` (blur/Enter):
+nilai di luar rentang dibatasi (clamped) ke batas terdekat dan field
+langsung menampilkan nilai yang sebenarnya diterapkan, plus pesan
+singkat di bawah field. Idle RPM, Redline RPM, dan Max RPM juga
+divalidasi silang — sistem otomatis menjaga jarak minimum
+(`Idle < Redline < Max`) dengan menggeser field lain jika perlu, supaya
+tabel gigi turunannya tidak pernah kehilangan rentang RPM yang valid.
+
+### Reset Setup
+
+Tombol **RESET SETUP** mengembalikan seluruh 12 parameter (termasuk 6
+rasio gigi) ke default pabrik dan langsung menerapkannya ke simulasi.
+
+### Alur data
+
+```
+VehicleSetup (data + validasi)
+        │  VehicleSetup.set()/setGearRatio()/reset()
+        ▼
+EngineState.applyVehicleSetup(setup)   ← satu titik orkestrasi
+        │
+        ├─→ RPMSimulator.configure()       (idle/redline/max RPM, accel/decel/spindown rate, rev-limit per gigi)
+        ├─→ Gearbox.configure()            (gear ratios, final drive, keliling roda)
+        ├─→ ThrottleController.configure() (ramp rate pedal gas)
+        └─→ state.maxRpmK / redlineStartK / maxSpeedKmh (dial gauge)
+```
+
+`ui-controller.js` membaca field-field itu setiap frame dan memanggil
+`Gauge.reconfigure()` / `SpeedGauge.reconfigure()` hanya ketika nilainya
+benar-benar berubah (bukan tiap frame), supaya rescale dial tidak
+membangun ulang SVG tanpa perlu.
