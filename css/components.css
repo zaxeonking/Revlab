@@ -1363,6 +1363,20 @@
   min-height: 2.6em;
 }
 
+.soundlab-card__mixmeter {
+  height: 4px;
+  border-radius: 3px;
+  background: var(--bg-recess);
+  overflow: hidden;
+}
+
+.soundlab-card__mixmeter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-ok);
+  transition: width 60ms linear;
+}
+
 .soundlab-card__file {
   display: flex;
   flex-direction: column;

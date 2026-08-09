@@ -337,13 +337,18 @@ const AudioEngine = (() => {
 
     // ---- SOUND LAB crossfade -------------------------------------------------
     // If the user has loaded a custom sample for a given band (via
-    // SoundLab, sound-lab.js), duck this layer's synth gain toward 0 so
-    // the custom sample is heard cleanly instead of layered underneath
-    // it. Falls back to full synth (duck = 1) whenever SoundLab isn't
-    // loaded yet or has no custom sample for that category — so this is
-    // a no-op if sound-lab.js is ever removed/omitted.
+    // SoundLab, sound-lab.js), duck this synth layer's gain by
+    // (1 - customMix) so the synth fades OUT in exact lockstep with the
+    // custom sample fading IN across a band crossfade — not just a hard
+    // on/off duck. Falls back to full synth (duck = 1) whenever SoundLab
+    // isn't loaded yet or has no custom sample for that category — so
+    // this is a no-op if sound-lab.js is ever removed/omitted.
     const SL = window.SoundLab;
-    const duck = (category) => (SL && SL.hasCustom(category)) ? 0 : 1;
+    const slSnapshot = SL ? SL.getSnapshot() : null;
+    const duck = (category) => {
+      if (!slSnapshot || !slSnapshot.categories[category] || !slSnapshot.categories[category].hasCustom) return 1;
+      return clamp01(1 - slSnapshot.categories[category].currentMix);
+    };
     const lowDuck = duck('low');
     const midDuck = duck('mid');
     const highDuck = duck('high');

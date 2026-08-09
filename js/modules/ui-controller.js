@@ -640,6 +640,7 @@ const UIController = (() => {
   let soundLabVolumeEls = {};
   let soundLabVolumeValueEls = {};
   let soundLabPreviewBtnEls = {};
+  let soundLabMixMeterEls = {};
 
   function buildSoundLabGrid() {
     if (!els.soundLabGrid) return;
@@ -650,6 +651,7 @@ const UIController = (() => {
     soundLabVolumeEls = {};
     soundLabVolumeValueEls = {};
     soundLabPreviewBtnEls = {};
+    soundLabMixMeterEls = {};
 
     SoundLab.CATEGORIES.forEach((cat) => {
       const meta = SoundLab.CATEGORY_META[cat];
@@ -666,6 +668,10 @@ const UIController = (() => {
           <span class="soundlab-card__badge" data-state="synth">SYNTH</span>
         </div>
         <p class="soundlab-card__hint">${meta.hint}</p>
+
+        <div class="soundlab-card__mixmeter" aria-hidden="true">
+          <div class="soundlab-card__mixmeter-fill"></div>
+        </div>
 
         <div class="soundlab-card__file">
           <label class="btn btn--setup soundlab-card__choose" for="${inputId}">PILIH FILE</label>
@@ -699,6 +705,7 @@ const UIController = (() => {
       soundLabRemoveBtnEls[cat] = card.querySelector('.soundlab-card__remove');
       soundLabVolumeEls[cat] = card.querySelector('.soundlab-card__volumeSlider');
       soundLabVolumeValueEls[cat] = card.querySelector('.soundlab-card__volumeValue');
+      soundLabMixMeterEls[cat] = card.querySelector('.soundlab-card__mixmeter-fill');
 
       // ---- File pick: local File API only, never a network upload ------
       soundLabFileInputEls[cat].addEventListener('change', (e) => {
@@ -789,6 +796,23 @@ const UIController = (() => {
     if (els.soundLabMasterVolumeValue) {
       els.soundLabMasterVolumeValue.textContent = `${Math.round(data.masterVolume * 100)}%`;
     }
+  }
+
+  /** Cheap per-frame visual only — updates the RPM-mix meter bar on each
+   *  Sound Lab card. Deliberately separate from renderSoundLab() (which
+   *  rebuilds text/badges and only runs on load/remove/volume changes)
+   *  so the meter can update every simulation frame without doing any
+   *  of that heavier work each tick. Gated on the modal actually being
+   *  open so it's a no-op the rest of the time. */
+  function renderSoundLabMeters(state) {
+    if (!els.soundLabOverlay || els.soundLabOverlay.dataset.open !== 'true') return;
+    const snapshot = SoundLab.getSnapshot();
+    SoundLab.CATEGORIES.forEach((cat) => {
+      const meterEl = soundLabMixMeterEls[cat];
+      if (!meterEl) return;
+      const mix = snapshot.categories[cat].currentMix || 0;
+      meterEl.style.width = `${Math.round(mix * 100)}%`;
+    });
   }
 
   function openSoundLab() {
@@ -930,6 +954,7 @@ const UIController = (() => {
       // regardless of whether any custom sample is loaded; it's a no-op
       // per-category otherwise.
       SoundLab.update(state);
+      renderSoundLabMeters(state);
       if (!state.engineOn) setAudioStatusLabel(
         AudioEngine.getState().isInitialized ? 'AUDIO ENGINE: STANDBY' : 'AUDIO ENGINE: NOT INITIALIZED'
       );
