@@ -61,6 +61,9 @@ const UIController = (() => {
       mobileShiftDownBtn: document.getElementById('mobileShiftDownBtn'),
       mobileGearValue: document.getElementById('mobileGearValue'),
 
+      engineSelect: document.getElementById('engineSelect'),
+      engineSelectHint: document.getElementById('engineSelectHint'),
+
       gearboxRatios: document.getElementById('gearboxRatios'),
       gearboxFinalDrive: document.getElementById('gearboxFinalDrive'),
       gearboxWheelCirc: document.getElementById('gearboxWheelCirc'),
@@ -495,6 +498,73 @@ const UIController = (() => {
         if (after !== before) logLine(`SHIFT DOWN (Ctrl) — gigi ${before} → ${after}.`);
       }
     });
+  }
+
+  // ------------------------------------------------------------------
+  // PRESET SELECTOR (ENGINE PROFILE dropdown) — options generated from
+  // VehicleSetup.getPresets() (backed by vehicle-presets.js), with a
+  // leading "STOCK (DEFAULT)" entry and a trailing "CUSTOM" entry that
+  // are always present regardless of the preset catalogue. Picking a
+  // named preset or STOCK immediately re-configures the whole
+  // simulation (params + drivetrain + sound); picking CUSTOM is a
+  // no-op on values, it just marks the current configuration as
+  // hand-tuned. The dropdown itself is kept in sync the other
+  // direction too — editing ANY field in VEHICLE SETUP flips it back
+  // to CUSTOM automatically (see VehicleSetup.markCustom(), fired from
+  // set()/setGearRatio()/setInductionType()).
+  // ------------------------------------------------------------------
+  function buildEngineSelect() {
+    if (!els.engineSelect) return;
+    els.engineSelect.innerHTML = '';
+
+    const stockOption = document.createElement('option');
+    stockOption.value = VehicleSetup.STOCK_ID;
+    stockOption.textContent = 'STOCK (DEFAULT)';
+    els.engineSelect.appendChild(stockOption);
+
+    VehicleSetup.getPresets().forEach((preset) => {
+      const option = document.createElement('option');
+      option.value = preset.id;
+      option.textContent = preset.label;
+      if (preset.description) option.title = preset.description;
+      els.engineSelect.appendChild(option);
+    });
+
+    const customOption = document.createElement('option');
+    customOption.value = VehicleSetup.CUSTOM_ID;
+    customOption.textContent = 'CUSTOM';
+    els.engineSelect.appendChild(customOption);
+
+    els.engineSelect.addEventListener('change', () => {
+      const id = els.engineSelect.value;
+      if (id === VehicleSetup.CUSTOM_ID) {
+        VehicleSetup.selectCustom();
+        logLine('ENGINE PROFILE — CUSTOM (parameter saat ini dipertahankan, siap diubah manual).');
+        return;
+      }
+      if (id === VehicleSetup.STOCK_ID) {
+        VehicleSetup.reset();
+        logLine('ENGINE PROFILE — STOCK (DEFAULT): semua parameter dikembalikan ke default pabrik.');
+        return;
+      }
+      const result = VehicleSetup.applyPreset(id);
+      if (result.ok) {
+        logLine(`ENGINE PROFILE — preset diterapkan: ${result.message.replace('Preset diterapkan: ', '')}`);
+      }
+    });
+  }
+
+  /** Keeps the ENGINE PROFILE dropdown showing whatever
+   *  currentPresetId VehicleSetup actually reports — called from the
+   *  global VehicleSetup.subscribe() below every time ANY field changes,
+   *  a preset is applied, or RESET SETUP runs, so it can never drift out
+   *  of sync with reality (e.g. hand-editing a field while a preset was
+   *  selected flips this back to CUSTOM automatically). */
+  function syncEngineSelect(values) {
+    if (!els.engineSelect) return;
+    if (els.engineSelect.value !== values.currentPresetId) {
+      els.engineSelect.value = values.currentPresetId;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -991,12 +1061,24 @@ const UIController = (() => {
     bindGearControls();
     bindGearKeyboard();
     bindStartButton();
+    buildEngineSelect();
     buildVehicleSetupForm();
     bindVehicleSetupPanel();
     buildSoundLabGrid();
     bindSoundLabPanel();
     renderSoundLab();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
+
+    // Single subscription keeps BOTH the ENGINE PROFILE dropdown and the
+    // VEHICLE SETUP form fields in sync with VehicleSetup's actual state,
+    // no matter which of the three ways it changed (preset picked, RESET
+    // SETUP pressed, or a single field hand-edited) — same "one source of
+    // truth, re-render from it" pattern EngineState.subscribe() below
+    // uses for the cockpit gauges.
+    VehicleSetup.subscribe((values) => {
+      syncEngineSelect(values);
+      renderVehicleSetupValues(values);
+    });
 
     EngineState.subscribe((state) => {
       render(state);

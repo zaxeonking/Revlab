@@ -198,6 +198,24 @@ const AudioEngine = (() => {
   let isInitialized = false;
   let isRunning = false;
 
+  // ---- Sound character (VEHICLE SETUP / PRESET SELECTOR) ----------------
+  // Multipliers against the stock layer levels above, set once per
+  // preset/vehicle by configureCharacter() (called from
+  // engine-state.js's applyVehicleSetup()) and read every frame in
+  // update() below — same "only touch existing AudioParams" rule as
+  // everything else in this file: these never create or reconnect a
+  // node, they just scale what a layer's glide() target already is.
+  // 1.0 on every multiplier reproduces the original stock balance this
+  // file shipped with (see VehicleSetup's DEFAULT_SOUND_CHARACTER).
+  let charPitchMult = 1;
+  let charLowMix = 1;
+  let charMidMix = 1;
+  let charHighMix = 1;
+  let charIntakeMix = 1;
+  let charExhaustMix = 1;
+  let charTurboMix = 1;
+  let charRasp = 1; // exhaust filter Q multiplier — raspier note under boost
+
   // Edge-detection for the one-shot event layers (blow-off / gear shift) —
   // EngineState hands us monotonically-increasing counters each frame;
   // we only fire the envelope when the counter actually CHANGES, so a
@@ -214,6 +232,34 @@ const AudioEngine = (() => {
 
   function rpmFractionOf(rpm) {
     return clamp01(rpm / MAX_RPM);
+  }
+
+  function clampRange(n, lo, hi) {
+    return Math.min(Math.max(n, lo), hi);
+  }
+
+  /**
+   * Sets the sound-character multiplier profile for the 9-layer mix —
+   * called from engine-state.js's applyVehicleSetup() every time a
+   * preset (or STOCK/RESET) is applied. Every field is optional and
+   * defaults to 1 (no change) if missing or not a finite number, so a
+   * partial or malformed spec never produces NaN/undefined gains —
+   * update() below just keeps using whatever was last validly set.
+   * Safe to call before init() (before the AudioContext/graph exist) —
+   * it only updates these plain numbers; the actual audible effect
+   * applies on the next update() frame after the graph is built.
+   */
+  function configureCharacter(spec) {
+    if (!spec) return;
+    const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+    charPitchMult = clampRange(num(spec.pitchMult, charPitchMult), 0.5, 2.0);
+    charLowMix = clampRange(num(spec.lowMix, charLowMix), 0, 3);
+    charMidMix = clampRange(num(spec.midMix, charMidMix), 0, 3);
+    charHighMix = clampRange(num(spec.highMix, charHighMix), 0, 3);
+    charIntakeMix = clampRange(num(spec.intakeMix, charIntakeMix), 0, 3);
+    charExhaustMix = clampRange(num(spec.exhaustMix, charExhaustMix), 0, 3);
+    charTurboMix = clampRange(num(spec.turboMix, charTurboMix), 0, 3);
+    charRasp = clampRange(num(spec.rasp, charRasp), 0.3, 3);
   }
 
   /** Ramps an AudioParam smoothly toward target — the one function every
@@ -542,7 +588,7 @@ const AudioEngine = (() => {
 
     const fraction = rpmFractionOf(frame.rpm);
     const throttleFraction = clamp01((frame.throttlePercent || 0) / 100);
-    const fundFreq = IDLE_FREQ_HZ + fraction * (MAX_FREQ_HZ - IDLE_FREQ_HZ);
+    const fundFreq = (IDLE_FREQ_HZ + fraction * (MAX_FREQ_HZ - IDLE_FREQ_HZ)) * charPitchMult;
     const spoolFraction = clamp01(frame.turboSpoolFraction || 0);
     const boostFraction = frame.maxBoostBar > 0 ? clamp01((frame.boostBar || 0) / frame.maxBoostBar) : 0;
     const inductionType = frame.inductionType || 'na';
@@ -569,16 +615,16 @@ const AudioEngine = (() => {
     // ---- Layer 1: ENGINE LOW — pitch + level, RPM-driven -------------------
     glide(oscLow1.frequency, fundFreq / 4);
     glide(oscLow2.frequency, fundFreq / 2);
-    glide(lowLayerGain.gain, (LOW_GAIN_MIN + fraction * (LOW_GAIN_MAX - LOW_GAIN_MIN)) * lowDuck);
+    glide(lowLayerGain.gain, (LOW_GAIN_MIN + fraction * (LOW_GAIN_MAX - LOW_GAIN_MIN)) * lowDuck * charLowMix);
 
     // ---- Layer 2: ENGINE MID — pitch RPM-driven, level ~constant -----------
     glide(oscMid.frequency, fundFreq);
-    glide(midLayerGain.gain, MID_GAIN * midDuck);
+    glide(midLayerGain.gain, MID_GAIN * midDuck * charMidMix);
 
     // ---- Layer 3: ENGINE HIGH — fades in with RPM ---------------------------
     glide(oscHigh1.frequency, fundFreq * 2);
     glide(oscHigh2.frequency, fundFreq * 3);
-    glide(highLayerGain.gain, (HIGH_GAIN_MIN + fraction * (HIGH_GAIN_MAX - HIGH_GAIN_MIN)) * highDuck);
+    glide(highLayerGain.gain, (HIGH_GAIN_MIN + fraction * (HIGH_GAIN_MAX - HIGH_GAIN_MIN)) * highDuck * charHighMix);
     glide(gainHigh1.gain, 0.7);
     glide(gainHigh2.gain, HIGH2_GAIN_MIN + fraction * (HIGH2_GAIN_MAX - HIGH2_GAIN_MIN));
 
@@ -586,19 +632,19 @@ const AudioEngine = (() => {
     const intakeFromThrottle = throttleFraction * INTAKE_THROTTLE_WEIGHT;
     const intakeFromRpm = fraction * (1 - INTAKE_THROTTLE_WEIGHT);
     const intakeMix = clamp01(intakeFromThrottle + intakeFromRpm);
-    glide(intakeLayerGain.gain, INTAKE_GAIN_MIN + intakeMix * (INTAKE_GAIN_MAX - INTAKE_GAIN_MIN));
+    glide(intakeLayerGain.gain, (INTAKE_GAIN_MIN + intakeMix * (INTAKE_GAIN_MAX - INTAKE_GAIN_MIN)) * charIntakeMix);
     glide(intakeFilter.frequency, INTAKE_FILTER_MIN_HZ + fraction * (INTAKE_FILTER_MAX_HZ - INTAKE_FILTER_MIN_HZ));
 
     // ---- Layer 5: EXHAUST — mostly RPM, some throttle, rasps up with boost --
     const exhaustFromThrottle = throttleFraction * EXHAUST_THROTTLE_WEIGHT;
     const exhaustFromRpm = fraction * (1 - EXHAUST_THROTTLE_WEIGHT);
     const exhaustMix = clamp01(exhaustFromThrottle + exhaustFromRpm);
-    const exhaustGain = EXHAUST_GAIN_MIN
+    const exhaustGain = (EXHAUST_GAIN_MIN
       + exhaustMix * (EXHAUST_GAIN_MAX - EXHAUST_GAIN_MIN)
-      + boostFraction * EXHAUST_BOOST_GAIN_BONUS;
+      + boostFraction * EXHAUST_BOOST_GAIN_BONUS) * charExhaustMix;
     glide(exhaustLayerGain.gain, exhaustGain);
     glide(exhaustFilter.frequency, EXHAUST_FILTER_MIN_HZ + fraction * (EXHAUST_FILTER_MAX_HZ - EXHAUST_FILTER_MIN_HZ));
-    glide(exhaustFilter.Q, EXHAUST_FILTER_Q_BASE + boostFraction * EXHAUST_FILTER_Q_BOOST_BONUS);
+    glide(exhaustFilter.Q, (EXHAUST_FILTER_Q_BASE + boostFraction * EXHAUST_FILTER_Q_BOOST_BONUS) * charRasp);
 
     // ---- Layer 6: TURBO SPOOL — pitch + level track spoolFraction, not RPM --
     // Silent entirely for naturally-aspirated (inductionType === 'na') —
@@ -607,7 +653,7 @@ const AudioEngine = (() => {
     // stray audible tail from residual param smoothing.
     const turboAudible = inductionType !== 'na';
     glide(oscTurbo.frequency, TURBO_MIN_FREQ_HZ + spoolFraction * (TURBO_MAX_FREQ_HZ - TURBO_MIN_FREQ_HZ));
-    glide(turboLayerGain.gain, turboAudible ? TURBO_GAIN_MAX * Math.pow(spoolFraction, TURBO_SPOOL_GAIN_CURVE) : 0);
+    glide(turboLayerGain.gain, turboAudible ? TURBO_GAIN_MAX * Math.pow(spoolFraction, TURBO_SPOOL_GAIN_CURVE) * charTurboMix : 0);
 
     // ---- Layer 7: BLOW-OFF — one-shot, edge-detected on blowOffEventId ------
     if (lastBlowOffEventId === null) {
@@ -647,5 +693,5 @@ const AudioEngine = (() => {
     };
   }
 
-  return { init, start, stop, update, setMasterVolume, getState };
+  return { init, start, stop, update, setMasterVolume, configureCharacter, getState };
 })();

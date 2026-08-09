@@ -62,12 +62,18 @@
       <section class="panel panel--engine" aria-label="Engine selection">
         <h2 class="panel__title">POWERTRAIN</h2>
 
+        <!-- PRESET SELECTOR — options populated by ui-controller.js from
+             VehicleSetup.getPresets() (backed by vehicle-presets.js), plus
+             a leading STOCK entry and a trailing CUSTOM entry. Picking a
+             preset calls VehicleSetup.applyPreset(id), which pushes every
+             parameter (weight/power/torque/RPM range/gears/final drive/
+             throttle response/engine braking/top speed/induction/sound
+             character) into the simulation in one shot — see
+             js/modules/vehicle-setup.js. -->
         <div class="field">
           <label class="field__label" for="engineSelect">ENGINE PROFILE</label>
-          <select id="engineSelect" class="field__select" disabled>
-            <option>— Belum ada profil terpasang —</option>
-          </select>
-          <p class="field__hint">Profil mesin &amp; sample suara akan ditambahkan pada tahap berikutnya.</p>
+          <select id="engineSelect" class="field__select"></select>
+          <p class="field__hint" id="engineSelectHint">Pilih preset kendaraan, atau ubah parameter di VEHICLE SETUP untuk membuat konfigurasi CUSTOM.</p>
         </div>
 
         <div class="field">
@@ -572,6 +578,7 @@
   <script src="js/modules/rpm-simulator.js"></script>
   <script src="js/modules/gearbox.js"></script>
   <script src="js/modules/engine-state.js"></script>
+  <script src="js/modules/vehicle-presets.js"></script>
   <script src="js/modules/vehicle-setup.js"></script>
   <script src="js/modules/audio-engine.js"></script>
   <script src="js/modules/sound-lab.js"></script>

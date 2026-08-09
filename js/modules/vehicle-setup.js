@@ -60,6 +60,24 @@ const VehicleSetup = (() => {
   ];
   const DEFAULT_INDUCTION_TYPE = 'turbo';
 
+  // ---- Sound character: multiplier profile AudioEngine's 9-layer mix
+  // reads (see audio-engine.js configureCharacter()) so a preset doesn't
+  // just drive differently, it SOUNDS like a different engine. 1.0 on
+  // every multiplier = AudioEngine's original stock balance, which is
+  // exactly what STOCK/DEFAULT below reproduces. ----------------------
+  const DEFAULT_SOUND_CHARACTER = {
+    label: 'STOCK', pitchMult: 1, lowMix: 1, midMix: 1, highMix: 1,
+    intakeMix: 1, exhaustMix: 1, turboMix: 1, rasp: 1,
+  };
+
+  // ---- Preset selector state (see vehicle-presets.js for the actual
+  // preset catalogue) — 'stock' is the factory-default state this module
+  // already boots into, 'custom' means the driver has hand-edited at
+  // least one field since the last preset/reset, and any other id is one
+  // of VehiclePresets' six named vehicles. -----------------------------
+  const STOCK_ID = 'stock';
+  const CUSTOM_ID = 'custom';
+
   // ---- Parameter specs (single source of truth for the form + validation) ----
   // decimals controls both step rounding and how the UI formats the value.
   const PARAMS = {
@@ -145,6 +163,22 @@ const VehicleSetup = (() => {
     Object.keys(PARAMS).forEach((key) => { values[key] = PARAMS[key].default; });
     values.gearRatios = GEAR_RATIO_SPEC.defaults.slice();
     values.inductionType = DEFAULT_INDUCTION_TYPE;
+    values.soundCharacter = { ...DEFAULT_SOUND_CHARACTER };
+    values.currentPresetId = STOCK_ID;
+    values.currentPresetLabel = 'STOCK (DEFAULT)';
+  }
+
+  /** Marks the current parameter set as hand-edited — called by every
+   *  scalar/gear/induction setter below so the PRESET SELECTOR's dropdown
+   *  reflects reality: the instant the driver changes ANY field away from
+   *  whatever preset (or STOCK) was last applied, this is no longer that
+   *  preset's exact configuration. Does not touch `values` otherwise and
+   *  never re-applies to the simulation itself (the caller already does
+   *  that for the field it just changed). */
+  function markCustom() {
+    if (values.currentPresetId === CUSTOM_ID) return;
+    values.currentPresetId = CUSTOM_ID;
+    values.currentPresetLabel = 'CUSTOM';
   }
 
   const listeners = new Set();
@@ -207,6 +241,7 @@ const VehicleSetup = (() => {
       }
     }
 
+    markCustom();
     applyToSimulation();
     notify({ reason: 'set', key });
     return { ok: result.ok, value: values[key], message: result.message };
@@ -252,6 +287,7 @@ const VehicleSetup = (() => {
     }
     const result = clampToSpec(GEAR_RATIO_SPEC, rawValue);
     values.gearRatios[index] = result.value;
+    markCustom();
     applyToSimulation();
     notify({ reason: 'setGearRatio', index });
     return result;
@@ -267,9 +303,74 @@ const VehicleSetup = (() => {
       return { ok: false, value: values.inductionType, message: 'Tipe induksi tidak dikenal.' };
     }
     values.inductionType = match.value;
+    markCustom();
     applyToSimulation();
     notify({ reason: 'setInductionType' });
     return { ok: true, value: values.inductionType, message: '' };
+  }
+
+  /**
+   * Applies a full preset from VehiclePresets (js/modules/vehicle-presets.js)
+   * in ONE shot: every scalar PARAMS field, all 6 gear ratios, induction
+   * type, AND the sound character profile — then a single
+   * applyToSimulation() call (rather than one per field, like set() would
+   * do) so the simulation never sees a half-applied intermediate preset.
+   * Every value still goes through the SAME clampToSpec() validation as a
+   * manual edit, so a preset can never push a field outside its declared
+   * min/max even if the preset data itself is ever hand-edited badly.
+   */
+  function applyPreset(id) {
+    const preset = (typeof VehiclePresets !== 'undefined') ? VehiclePresets.getById(id) : null;
+    if (!preset) {
+      return { ok: false, value: id, message: 'Preset tidak dikenal.' };
+    }
+
+    Object.keys(PARAMS).forEach((key) => {
+      if (preset[key] !== undefined) {
+        values[key] = clampToSpec(PARAMS[key], preset[key]).value;
+      }
+    });
+    // Re-run the same idle/redline/max ordering guard set() uses, in case
+    // a preset's three RPM fields were ever edited too close together.
+    enforceRpmOrdering('maxRpm');
+
+    if (Array.isArray(preset.gearRatios)) {
+      preset.gearRatios.forEach((ratio, index) => {
+        if (index < GEAR_COUNT) {
+          values.gearRatios[index] = clampToSpec(GEAR_RATIO_SPEC, ratio).value;
+        }
+      });
+    }
+
+    if (preset.inductionType) {
+      const match = INDUCTION_TYPES.find((t) => t.value === preset.inductionType);
+      if (match) values.inductionType = match.value;
+    }
+
+    values.soundCharacter = preset.soundCharacter
+      ? { ...DEFAULT_SOUND_CHARACTER, ...preset.soundCharacter }
+      : { ...DEFAULT_SOUND_CHARACTER };
+
+    values.currentPresetId = preset.id;
+    values.currentPresetLabel = preset.label;
+
+    applyToSimulation();
+    notify({ reason: 'preset', id: preset.id });
+    return { ok: true, value: preset.id, message: `Preset diterapkan: ${preset.label}.` };
+  }
+
+  /** Explicitly marks CUSTOM without changing any values — what the
+   *  PRESET SELECTOR's "CUSTOM" option calls when picked directly (as
+   *  opposed to markCustom() above, which fires implicitly the moment any
+   *  field is hand-edited while a named preset/STOCK was active). */
+  function selectCustom() {
+    markCustom();
+    notify({ reason: 'custom' });
+    return getAll();
+  }
+
+  function getPresets() {
+    return (typeof VehiclePresets !== 'undefined') ? VehiclePresets.getAll() : [];
   }
 
   function getInductionTypes() {
@@ -281,7 +382,11 @@ const VehicleSetup = (() => {
   }
 
   function getAll() {
-    return { ...values, gearRatios: values.gearRatios.slice() };
+    return {
+      ...values,
+      gearRatios: values.gearRatios.slice(),
+      soundCharacter: { ...values.soundCharacter },
+    };
   }
 
   function getSpec(key) {
@@ -336,5 +441,10 @@ const VehicleSetup = (() => {
     getGearRatioSpec,
     getParamKeys,
     GEAR_COUNT,
+    applyPreset,
+    selectCustom,
+    getPresets,
+    STOCK_ID,
+    CUSTOM_ID,
   };
 })();

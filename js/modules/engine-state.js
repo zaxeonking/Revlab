@@ -931,6 +931,15 @@ const EngineState = (() => {
     state.maxBoostBar = MAX_BOOST_BAR;
     state.inductionType = INDUCTION_TYPE;
 
+    // ---- Sound character (PRESET SELECTOR / VehicleSetup.soundCharacter)
+    // → AudioEngine's 9-layer mix. Same "reach the module directly, don't
+    // duplicate its logic here" pattern as RPMSimulator/Gearbox/
+    // ThrottleController.configure() above — EngineState is just the
+    // orchestration point, not where the audio math lives. ----------------
+    if (typeof AudioEngine !== 'undefined' && AudioEngine.configureCharacter && setup.soundCharacter) {
+      AudioEngine.configureCharacter(setup.soundCharacter);
+    }
+
     notify();
     return getState();
   }
