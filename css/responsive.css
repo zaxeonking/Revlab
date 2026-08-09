@@ -50,13 +50,12 @@
     width: min(80vw, 260px);
   }
 
-  /* Paired speedometer + tachometer need to share one row even on a
-     narrow phone, so this overrides the generic .gauge-wrap rule above
-     (descendant selector = higher specificity, wins regardless of
-     source order). Same width logic applies to both gauges — neither
-     one gets special-cased. */
+  /* Paired speedometer + tachometer stay side by side even here — only
+     the cap shrinks (calc() above already sizes each to exactly half
+     the row, so this just keeps them from getting too big, same as
+     the desktop rule). */
   .gauge-pair .gauge-wrap {
-    width: min(40vw, 150px);
+    max-width: 150px;
   }
 
   .fs-2xl,

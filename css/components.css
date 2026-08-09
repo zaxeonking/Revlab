@@ -247,15 +247,22 @@
    hero gauge + one shrunken secondary gauge. */
 .gauge-pair {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: var(--sp-4);
+  width: 100%;
 }
 
 .gauge-wrap--paired {
-  width: min(42vw, 190px);
+  /* calc() instead of vw: sizes off the actual space left inside this
+     flex row (already net of panel/dash padding), so the two gauges
+     reliably fit on one line instead of guessing viewport width and
+     overflowing into a wrap. */
+  width: calc((100% - var(--sp-4)) / 2);
+  max-width: 190px;
   margin: 0 auto;
+  flex-shrink: 1;
 }
 
 .gauge__readout--paired {
@@ -268,13 +275,30 @@
 
 .redline-indicator--paired,
 .speed-warning-indicator--paired {
-  top: 10%;
-  padding: 2px var(--sp-2);
+  top: 8%;
+  left: 46%;
+  padding: 2px 6px;
 }
 
 .redline-indicator--paired .redline-indicator__label,
 .speed-warning-indicator--paired .redline-indicator__label {
-  font-size: 8px;
+  font-size: 7px;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* Gear badge shrinks + tucks further into the corner in paired layout
+   so it clears the OVER LIMIT badge instead of overlapping it — same
+   collision-avoidance need doesn't exist at the old hero size, where
+   there was room for both at their normal dimensions. */
+.gear-indicator--paired {
+  top: 6%;
+  right: 4%;
+  width: 24px;
+  height: 24px;
+}
+
+.gear-indicator--paired .gear-indicator__value {
+  font-size: var(--fs-sm);
 }
 
 /* Unit toggle sitting directly under the speedometer hero (moved out of
