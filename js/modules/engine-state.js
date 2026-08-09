@@ -91,11 +91,21 @@ const EngineState = (() => {
 
   const GEARS = [
     { label: 'N', upAt: 1200, downAt: null },
-    { label: '1', upAt: 2000, downAt: null },
-    { label: '2', upAt: 3500, downAt: safeDownAt(2000, 2) },
-    { label: '3', upAt: 5000, downAt: safeDownAt(3500, 3) },
-    { label: '4', upAt: 6500, downAt: safeDownAt(5000, 4) },
-    { label: '5', upAt: 8000, downAt: safeDownAt(6500, 5) },
+    // 1st–4th upAt now equal that gear's own rev-limiter ceiling
+    // (RPMSimulator.GEAR_REV_LIMIT_RPM: 3300 / 4800 / 6300 / 7800) —
+    // previously AUTO upshifted at much lower, "comfort" points (2000 /
+    // 3500 / 5000 / 6500) that had nothing to do with each gear's actual
+    // limiter, so AUTO was pulling out of every low gear early ("kecepetan")
+    // while MANUAL let you rev the same gear a couple thousand rpm further.
+    // Now AUTO holds each gear out to (essentially) its own redline before
+    // shifting, same ceiling MANUAL respects — a shift now happens right
+    // as the limiter would've started cutting fuel anyway, instead of well
+    // before it.
+    { label: '1', upAt: 3300, downAt: null },
+    { label: '2', upAt: 4800, downAt: safeDownAt(3300, 2) },
+    { label: '3', upAt: 6300, downAt: safeDownAt(4800, 3) },
+    { label: '4', upAt: 7800, downAt: safeDownAt(6300, 4) },
+    { label: '5', upAt: 8000, downAt: safeDownAt(7800, 5) },
     { label: '6', upAt: null, downAt: safeDownAt(8000, 6) },
   ];
   const MAX_GEAR_INDEX = GEARS.length - 1;

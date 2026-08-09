@@ -111,19 +111,25 @@ const RPMSimulator = (() => {
   // dips (shifting near redline in a high gear) — see stepGear()'s
   // SHIFT_LOCK_MS in engine-state.js, which was widened to match.
   const SHIFT_DIP_MS = 450;
-  const SHIFT_DIP_RATE_RPM_PER_S = 6200;
+  // Rate cut hard from 6200 → 2200. The dip's HARSHNESS was never
+  // really about how far it dropped (the fractions below already got
+  // shallower for low gears) — it's about how fast it got there. A
+  // dip that reaches even a shallow target almost instantly still
+  // reads as a jolt/hentakan because the RATE OF CHANGE (jerk) is
+  // what the ear/eye picks up, not just the endpoint. At 2200rpm/s
+  // the needle eases into the dip over the dip window instead of
+  // snapping to it — and since isDipping() ends purely on the 450ms
+  // timer (not on "target reached"), it's fine if the slower rate
+  // means the dip doesn't fully reach its target before normal
+  // throttle-chase resumes: that's actually what makes the handoff
+  // feel smooth instead of like it hit a floor and bounced off it.
+  const SHIFT_DIP_RATE_RPM_PER_S = 2200;
   // Per-gear dip depth (dip target = currentRpm * (1 - fraction)),
   // indexed by the gear being ENTERED — same indexing as
-  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Used to be one flat
-  // 0.32 for every shift, which made every upshift kick the needle
-  // down by the same harsh amount regardless of gear — most noticeable
-  // (and most complained about) low in the box, where shifts happen
-  // more often. Now it ramps up with gear: 1st–4th dip shallower and
-  // recover faster, 5th/6th stay close to the old depth (a big,
-  // dramatic drop still suits a near-redline top-gear shift). Index 0
-  // is unused — Neutral→1st is a standing-start engagement, not a
-  // shift, and skips the dip entirely (see stepGear() in engine-state.js).
-  const GEAR_DIP_FRACTION = [0, 0.14, 0.17, 0.20, 0.23, 0.28, 0.32];
+  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Shallowed further for
+  // 1st–4th on top of the rate cut above — still enough that a shift
+  // reads as a real event, not so much it feels like a stumble.
+  const GEAR_DIP_FRACTION = [0, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25];
 
   // A dip models the clutch briefly interrupting POWER — that only makes
   // sense for a shift that happens while the driver is actually on the
@@ -200,17 +206,24 @@ const RPMSimulator = (() => {
   // some headroom past that gear's normal auto-upshift point (see
   // GEARS.upAt in engine-state.js) — mainly felt in MANUAL mode, since
   // AUTO shifts you out of a gear before you'd ever reach its ceiling.
-  // Neutral and top gear both fall back to the engine's absolute limit:
-  // neutral has no drivetrain load to protect, and top gear has nowhere
-  // higher to shift into anyway.
+  // 5th now gets its own distinct ceiling too (was silently falling
+  // back to the flat engine limit, same number as 6th — so AUTO and
+  // MANUAL didn't actually agree on what "5th gear's limiter" meant).
+  // It uses less headroom than 1st–4th (500 vs 1300) simply because
+  // there isn't 1300rpm of room left before the engine's absolute
+  // fuel-cut ceiling (8800) — 8000 + 1300 would overshoot it.
+  // Neutral and 6th (true top gear) are the only two that intentionally
+  // still equal the engine's absolute limit: neutral has no drivetrain
+  // load to protect, and 6th has nowhere higher to shift into, so
+  // hitting the real redline there is correct, not a fallback.
   const GEAR_REV_LIMIT_RPM = [
     REV_LIMIT_RPM, // N
     3300,          // 1
     4800,          // 2
     6300,          // 3
     7800,          // 4
-    REV_LIMIT_RPM, // 5
-    REV_LIMIT_RPM, // 6
+    8500,          // 5 — now its own ceiling, not a fallback to REV_LIMIT_RPM
+    REV_LIMIT_RPM, // 6 — intentionally the true engine redline (top gear)
   ];
 
   function currentRevLimit() {
