@@ -304,6 +304,13 @@ const UIController = (() => {
         EngineState.stopEngine();
         logLine('STOP ENGINE — ignition off, RPM coasting down.');
       } else {
+        // AudioContext creation MUST happen inside this click handler —
+        // it's the actual user gesture. init() is a no-op if the graph
+        // already exists from a previous Start Engine press.
+        const result = AudioEngine.init();
+        setAudioStatusLabel(result.ok
+          ? 'AUDIO ENGINE: RUNNING'
+          : 'AUDIO ENGINE: UNAVAILABLE');
         EngineState.startEngine();
         logLine('START ENGINE — idle RPM engaged.');
       }
@@ -319,7 +326,15 @@ const UIController = (() => {
     bindStartButton();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
 
-    EngineState.subscribe((state) => render(state));
+    EngineState.subscribe((state) => {
+      render(state);
+      // AudioEngine.update() is a no-op until AudioEngine.init() has run
+      // (first Start Engine click) — safe to call every frame regardless.
+      AudioEngine.update(state);
+      if (!state.engineOn) setAudioStatusLabel(
+        AudioEngine.getState().isInitialized ? 'AUDIO ENGINE: STANDBY' : 'AUDIO ENGINE: NOT INITIALIZED'
+      );
+    });
 
     // Press/hold throttle sources (keyboard W/ArrowUp, desktop button,
     // mobile pedal) all live in ThrottleController — it owns the

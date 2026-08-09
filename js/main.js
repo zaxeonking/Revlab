@@ -7,8 +7,11 @@
  * (inertia, accel/decel rates, rev limiter) — not a snapshot formula and
  * not random. Throttle can be driven by the slider, keyboard (W /
  * ArrowUp), the desktop throttle button, or the mobile pedal — all via
- * ThrottleController, which UIController wires up. AudioEngine remains
- * a documented stub.
+ * ThrottleController, which UIController wires up. AudioEngine is real
+ * Web Audio API synthesis now (see audio-engine.js) — but its
+ * AudioContext is deliberately NOT created here, since this runs before
+ * any user gesture. UIController's Start Engine click handler is what
+ * calls AudioEngine.init(), the first time the button is pressed.
  * -----------------------------------------------------------------------
  */
 
@@ -17,9 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
   EngineState.init();
   UIController.init(gauge);
 
-  // AudioEngine is intentionally left untouched here — its init()/start()
-  // stubs are only meant to be called once a real Web Audio API
-  // implementation exists in a later stage.
   console.info('[REVLAB] Cockpit UI loaded. RPMSimulator running (rAF loop, deterministic physics).');
   console.info('[RPMSimulator] current state:', RPMSimulator.getState());
   console.info('[AudioEngine] current state:', AudioEngine.getState());
