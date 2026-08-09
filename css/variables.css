@@ -1,50 +1,61 @@
 /*
   REVLAB — Design Tokens
-  Palette: dark motorsport telemetry cockpit.
-  Two accents only:
-    --accent-amber  : warning / redline / heat (analog dash lamp)
-    --accent-cyan   : live digital telemetry data
+  Palette: dark motorsport instrument cluster / cockpit telemetry.
+  Three functional accents only:
+    --accent-cyan   : live digital telemetry data (primary)
+    --accent-amber  : caution / heat / mid-band shift lights
+    --accent-red    : danger / redline / limiter / over-speed
 */
 
 :root {
-  /* ---- Base surfaces ---- */
-  --bg-0: #0a0b0d;      /* app background */
-  --bg-1: #131418;      /* panel surface */
-  --bg-2: #1b1d22;      /* raised / inset surface */
-  --bg-3: #24262c;      /* hover / active surface */
+  /* ---- Base surfaces (near-black graphite, not flat black) ---- */
+  --bg-0: #08090b;      /* app background */
+  --bg-1: #0e1013;      /* cockpit bezel surface */
+  --bg-2: #16181d;      /* instrument pod / raised surface */
+  --bg-3: #1e2127;      /* hover / active surface */
+  --bg-recess: #050608; /* recessed dial face, deepest black */
 
-  --border-0: #2a2c33;
-  --border-1: #3a3d46;
+  --border-0: #24262c;
+  --border-1: #34373f;
+  --border-2: #45484f;
 
   /* ---- Text ---- */
-  --text-0: #eceef1;    /* primary */
-  --text-1: #9a9daa;    /* secondary / labels */
-  --text-2: #5d6070;    /* muted / disabled */
+  --text-0: #eef1f4;    /* primary digital readout */
+  --text-1: #8b8f9c;    /* secondary / labels */
+  --text-2: #52555f;    /* muted / disabled / tick marks */
 
   /* ---- Accents ---- */
-  --accent-amber: #ff7a1a;
-  --accent-amber-dim: #7a4319;
-  --accent-cyan: #29e0e8;
-  --accent-cyan-dim: #1c6b70;
+  --accent-amber: #ff9d1a;
+  --accent-amber-dim: #6b4318;
+  --accent-cyan: #2ee3f2;
+  --accent-cyan-dim: #164850;
 
-  --accent-danger: #ff4d4d;
-  --accent-ok: #34d17c;
+  --accent-red: #ff2f3a;
+  --accent-red-dim: #5c1418;
+  --accent-danger: var(--accent-red);
+  --accent-ok: #35e08a;
+
+  /* ---- Glow (used sparingly — active gauges / shift lights / warnings only) ---- */
+  --glow-cyan: 0 0 10px rgba(46, 227, 242, 0.55), 0 0 2px rgba(46, 227, 242, 0.9);
+  --glow-amber: 0 0 10px rgba(255, 157, 26, 0.55), 0 0 2px rgba(255, 157, 26, 0.9);
+  --glow-red: 0 0 14px rgba(255, 47, 58, 0.7), 0 0 3px rgba(255, 47, 58, 0.95);
 
   /* ---- Typography ---- */
   --font-display: 'Rajdhani', 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
   --font-body: 'Rajdhani', 'Segoe UI', sans-serif;
 
-  --fs-xs: 0.72rem;
-  --fs-sm: 0.85rem;
-  --fs-md: 1rem;
-  --fs-lg: 1.25rem;
-  --fs-xl: 1.75rem;
-  --fs-2xl: 2.5rem;
-  --fs-3xl: 3.75rem;
+  --fs-xs: 0.7rem;
+  --fs-sm: 0.82rem;
+  --fs-md: 0.98rem;
+  --fs-lg: 1.2rem;
+  --fs-xl: 1.7rem;
+  --fs-2xl: 2.6rem;
+  --fs-3xl: 3.9rem;
 
-  --tracking-wide: 0.08em;
-  --tracking-wider: 0.16em;
+  --tracking-wide: 0.09em;
+  --tracking-wider: 0.18em;
+  --tracking-widest: 0.28em;
 
   /* ---- Spacing ---- */
   --sp-1: 4px;
@@ -55,13 +66,15 @@
   --sp-6: 32px;
   --sp-7: 48px;
 
-  /* ---- Radius / elevation ---- */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 14px;
+  /* ---- Radius / elevation (tighter, more technical than SaaS-rounded) ---- */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
 
   --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
-                  0 12px 24px -16px rgba(0, 0, 0, 0.6);
+                  0 16px 32px -18px rgba(0, 0, 0, 0.75);
+  --shadow-recess: inset 0 2px 10px rgba(0, 0, 0, 0.85),
+                   inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

@@ -18,10 +18,14 @@ body {
   font-size: var(--fs-md);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
-  /* Faint engine-turned texture: subtle radial vignette, not decorative noise */
+  /* Cockpit ambience: faint top/bottom instrument glow + a very subtle
+     technical weave texture standing in for brushed carbon fiber. Kept
+     deliberately low-contrast so it reads as material, not decoration. */
   background-image:
-    radial-gradient(ellipse at 50% -10%, rgba(41, 224, 232, 0.05), transparent 55%),
-    radial-gradient(ellipse at 100% 110%, rgba(255, 122, 26, 0.05), transparent 55%);
+    radial-gradient(ellipse 900px 480px at 50% -8%, rgba(46, 227, 242, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 420px at 100% 108%, rgba(255, 157, 26, 0.045), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.010) 0px, rgba(255, 255, 255, 0.010) 1px, transparent 1px, transparent 4px);
   background-attachment: fixed;
 }
 

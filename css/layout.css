@@ -1,4 +1,4 @@
-/* REVLAB — Structural layout (grid skeleton) */
+/* REVLAB — Structural layout: one unified cockpit composition */
 
 .app {
   min-height: 100%;
@@ -6,16 +6,15 @@
   flex-direction: column;
 }
 
-/* ---------- Top bar ---------- */
+/* ---------- Cockpit top bar: shift lights + status ---------- */
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-6);
+  padding: var(--sp-3) var(--sp-6);
   border-bottom: 1px solid var(--border-0);
   background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
-  flex-wrap: wrap;
 }
 
 .topbar__brand {
@@ -27,18 +26,23 @@
 .topbar__status {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  justify-content: flex-end;
+  gap: var(--sp-2);
   flex-wrap: wrap;
 }
 
-/* ---------- Main dashboard grid ---------- */
+/* ---------- Main cockpit: one bezel, three zones divided by hairlines
+   instead of three separate elevated cards ---------- */
 .dash {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(220px, 1fr);
-  gap: var(--sp-5);
-  padding: var(--sp-6);
-  align-items: stretch;
+  grid-template-columns: minmax(200px, 0.82fr) minmax(360px, 1.55fr) minmax(200px, 0.82fr);
+  margin: var(--sp-5) var(--sp-6) 0;
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0) 70%);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
 }
 
 .panel--gauge {
@@ -48,17 +52,23 @@
   justify-content: center;
   text-align: center;
   gap: var(--sp-4);
+  background:
+    radial-gradient(ellipse 640px 360px at 50% 38%, rgba(46, 227, 242, 0.05), transparent 65%),
+    var(--bg-1);
 }
 
-/* ---------- Control strip (footer) ---------- */
+/* ---------- Control strip (footer console) ---------- */
 .controls {
   display: grid;
   grid-template-columns: 1.2fr auto 1fr;
   align-items: center;
   gap: var(--sp-6);
-  padding: var(--sp-5) var(--sp-6) var(--sp-6);
-  border-top: 1px solid var(--border-0);
+  margin: var(--sp-4) var(--sp-6) var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-lg);
   background: linear-gradient(0deg, var(--bg-1), var(--bg-0));
+  box-shadow: var(--shadow-panel);
 }
 
 .controls__group {

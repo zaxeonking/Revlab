@@ -21,12 +21,18 @@
 
   <div class="app" id="app">
 
-    <!-- ============ TOP BAR ============ -->
+    <!-- ============ COCKPIT TOP BAR: brand / shift lights / status ============ -->
     <header class="topbar">
       <div class="topbar__brand">
         <span class="topbar__logo">REVLAB</span>
         <span class="topbar__tagline">ENGINE SOUND SIMULATOR</span>
       </div>
+
+      <!-- 12 LED segments, built + driven by ui-controller.js from the
+           real RPM state (RPMSimulator via EngineState) — same "generate
+           in JS from real constants" pattern as gaugeboxRatios below, no
+           hand-typed light count. -->
+      <div class="shiftlights" id="shiftLights" aria-hidden="true"></div>
 
       <div class="topbar__status">
         <div class="status-chip" id="engineStatusChip" data-state="off">
@@ -35,6 +41,16 @@
         </div>
         <div class="status-chip status-chip--muted">
           <span class="status-chip__label" id="audioStatusLabel">AUDIO ENGINE: NOT INITIALIZED</span>
+        </div>
+        <!-- Static system indicators — constant feature flags, not
+             sensor telemetry, so these are never touched per-frame. -->
+        <div class="status-chip status-chip--static">
+          <span class="status-chip__dot status-chip__dot--ok"></span>
+          <span class="status-chip__label">TC ON</span>
+        </div>
+        <div class="status-chip status-chip--static">
+          <span class="status-chip__dot status-chip__dot--ok"></span>
+          <span class="status-chip__label">ABS ON</span>
         </div>
       </div>
     </header>
@@ -125,10 +141,13 @@
               <span class="redline-indicator__dot"></span>
               <span class="redline-indicator__label">OVER LIMIT</span>
             </div>
+          </div>
 
-            <div class="gear-indicator gear-indicator--paired" id="gearIndicator" aria-label="Current gear" data-shifting="false">
-              <span class="gear-indicator__value" id="gearValue">N</span>
-            </div>
+          <!-- Gear plate — embedded center-console badge docked between
+               the two instruments, not tucked in a gauge corner. -->
+          <div class="gear-plate" id="gearIndicator" aria-label="Current gear" data-shifting="false">
+            <span class="gear-plate__value" id="gearValue">N</span>
+            <span class="gear-plate__label">GEAR</span>
           </div>
 
           <div class="gauge-wrap gauge-wrap--paired">

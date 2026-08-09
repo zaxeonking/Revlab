@@ -17,60 +17,113 @@
   text-transform: uppercase;
 }
 
+/* ---------- Shift-light bar ---------- */
+.shiftlights {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: center;
+}
+
+.shiftlight {
+  width: 15px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  transition: background var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+
+.shiftlight[data-band="lo"][data-on="true"] {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.shiftlight[data-band="mid"][data-on="true"] {
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
+  box-shadow: var(--glow-amber);
+}
+
+.shiftlight[data-band="hi"][data-on="true"] {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  box-shadow: var(--glow-red);
+}
+
+.shiftlight[data-flash="true"] {
+  animation: shiftlight-flash 160ms steps(1) 3;
+}
+
+@keyframes shiftlight-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
 /* ---------- Status chip ---------- */
 .status-chip {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  padding: 5px var(--sp-2);
   border: 1px solid var(--border-0);
   border-radius: var(--radius-sm);
-  background: var(--bg-1);
+  background: var(--bg-2);
 }
 
 .status-chip__label {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 10px;
   letter-spacing: var(--tracking-wide);
   color: var(--text-1);
 }
 
 .status-chip__dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--text-2);
   box-shadow: none;
 }
 
 .status-chip[data-state="off"] .status-chip__dot {
-  background: var(--accent-danger);
+  background: var(--accent-red);
 }
 
 .status-chip[data-state="idle"] .status-chip__dot {
   background: var(--accent-ok);
-  box-shadow: 0 0 8px rgba(52, 209, 124, 0.6);
+  box-shadow: 0 0 8px rgba(53, 224, 138, 0.6);
 }
 
 .status-chip[data-state="redline"] .status-chip__dot {
-  background: var(--accent-danger);
-  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+  background: var(--accent-red);
+  box-shadow: var(--glow-red);
 }
 
 .status-chip[data-state="redline"] .status-chip__label {
-  color: var(--accent-danger);
+  color: var(--accent-red);
 }
 
 .status-chip--muted {
-  opacity: 0.7;
+  opacity: 0.65;
+}
+
+/* Static feature indicators (TC / ABS) — constant system state, not
+   telemetry: no per-frame JS writes to these. */
+.status-chip--static {
+  opacity: 0.85;
+}
+
+.status-chip__dot--ok {
+  background: var(--accent-ok);
+  box-shadow: 0 0 6px rgba(53, 224, 138, 0.5);
 }
 
 /* ---------- Panel ---------- */
 .panel {
-  background: var(--bg-1);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
   padding: var(--sp-5);
   display: flex;
   flex-direction: column;
@@ -78,10 +131,18 @@
   min-width: 0;
 }
 
+.panel--engine {
+  border-right: 1px solid var(--border-0);
+}
+
+.panel--telemetry {
+  border-left: 1px solid var(--border-0);
+}
+
 .panel__title {
-  font-size: var(--fs-sm);
-  letter-spacing: var(--tracking-wider);
-  color: var(--text-1);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-widest);
+  color: var(--text-2);
   padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--border-0);
 }
@@ -92,16 +153,23 @@
   line-height: 1.5;
 }
 
-/* ---------- Fields ---------- */
+/* ---------- Fields (powertrain spec placard) ---------- */
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 3px;
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border-0);
+}
+
+.field:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .field__label {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 10px;
   letter-spacing: var(--tracking-wide);
   color: var(--text-2);
   text-transform: uppercase;
@@ -111,7 +179,7 @@
   background: var(--bg-2);
   border: 1px solid var(--border-0);
   color: var(--text-1);
-  padding: var(--sp-3);
+  padding: var(--sp-2);
   border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
 }
@@ -123,13 +191,14 @@
 }
 
 .field__value {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
   color: var(--text-0);
 }
 
 .field__value--mono {
   font-family: var(--font-mono);
   color: var(--accent-cyan);
+  font-size: var(--fs-sm);
 }
 
 /* ---------- Gauge (signature element) ---------- */
@@ -146,44 +215,47 @@
 }
 
 .gauge__bezel {
-  fill: var(--bg-2);
-  stroke: var(--border-1);
+  fill: var(--bg-recess);
+  stroke: var(--border-2);
   stroke-width: 2;
 }
 
 .gauge__tick {
   stroke: var(--text-2);
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 .gauge__tick--major {
   stroke: var(--text-1);
-  stroke-width: 3;
+  stroke-width: 2.5;
 }
 
 .gauge__tick-label {
   fill: var(--text-1);
   font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 500;
   text-anchor: middle;
 }
 
 .gauge__redline-arc {
   fill: none;
-  stroke: var(--accent-amber);
+  stroke: var(--accent-red);
   stroke-width: 4;
-  opacity: 0.8;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 3px rgba(255, 47, 58, 0.5));
 }
 
 /* Speedometer's own top-speed warning zone — same construction as
-   .gauge__redline-arc, but red rather than amber so speed-over-limit
-   reads as more urgent than an RPM redline (which is a normal part of
-   revving hard, not a warning by itself). */
+   .gauge__redline-arc, both use the danger color; speed and RPM redlines
+   are functionally the same "approaching the ceiling" cue on this dial
+   language, so they share styling rather than needing a second hue. */
 .gauge__warn-arc {
   fill: none;
-  stroke: var(--accent-danger);
+  stroke: var(--accent-red);
   stroke-width: 4;
   opacity: 0.85;
+  filter: drop-shadow(0 0 3px rgba(255, 47, 58, 0.5));
 }
 
 .gauge__needle-group {
@@ -199,11 +271,11 @@
   stroke: var(--accent-cyan);
   stroke-width: 3;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 4px rgba(41, 224, 232, 0.5));
+  filter: drop-shadow(0 0 5px rgba(46, 227, 242, 0.65));
 }
 
 .gauge__hub {
-  fill: var(--bg-0);
+  fill: var(--bg-1);
   stroke: var(--accent-cyan);
   stroke-width: 2;
 }
@@ -225,11 +297,12 @@
   font-weight: 700;
   color: var(--text-0);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .gauge__rpm-unit {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 10px;
   color: var(--text-2);
   letter-spacing: var(--tracking-wide);
 }
@@ -237,30 +310,26 @@
 .gauge__caption {
   font-size: var(--fs-xs);
   color: var(--text-2);
-  max-width: 32ch;
+  max-width: 36ch;
 }
 
 /* ---------- Paired gauges (speedometer + tachometer, side by side) ----
-   Speedometer and tachometer now live in the same panel at the same
-   size and share these "--paired" modifiers — one shared visual
-   language applied identically to both instruments, rather than one
-   hero gauge + one shrunken secondary gauge. */
+   Speedometer and tachometer live in the same instrument pod at the
+   same size, with a gear plate docked between them, so the pair reads
+   as one composed cluster rather than two separate widgets. */
 .gauge-pair {
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
   width: 100%;
 }
 
 .gauge-wrap--paired {
-  /* calc() instead of vw: sizes off the actual space left inside this
-     flex row (already net of panel/dash padding), so the two gauges
-     reliably fit on one line instead of guessing viewport width and
-     overflowing into a wrap. */
-  width: calc((100% - var(--sp-4)) / 2);
-  max-width: 190px;
+  width: calc((100% - var(--sp-3) * 2 - 96px) / 2);
+  max-width: 210px;
   margin: 0 auto;
   flex-shrink: 1;
 }
@@ -270,13 +339,12 @@
 }
 
 .gauge__rpm-value--paired {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-xl);
 }
 
 .redline-indicator--paired,
 .speed-warning-indicator--paired {
   top: 8%;
-  left: 46%;
   padding: 2px 6px;
 }
 
@@ -286,33 +354,53 @@
   letter-spacing: var(--tracking-wide);
 }
 
-/* Gear badge shrinks + tucks further into the corner in paired layout
-   so it clears the OVER LIMIT badge instead of overlapping it — same
-   collision-avoidance need doesn't exist at the old hero size, where
-   there was room for both at their normal dimensions. */
-.gear-indicator--paired {
-  top: 6%;
-  right: 4%;
-  width: 24px;
-  height: 24px;
+/* ---------- Gear plate — embedded center console badge, docked between
+   the two gauges instead of tucked into a gauge corner ---------- */
+.gear-plate {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-1);
+  background:
+    linear-gradient(180deg, var(--bg-2), var(--bg-recess));
+  box-shadow: var(--shadow-recess);
 }
 
-.gear-indicator--paired .gear-indicator__value {
-  font-size: var(--fs-sm);
+.gear-plate__value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 12px rgba(46, 227, 242, 0.5);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Unit toggle sitting directly under the speedometer hero (moved out of
-   the telemetry list now that SPEED itself lives in the gauge). */
-.unit-toggle--gauge {
-  width: min(100%, 220px);
+.gear-plate__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-widest);
+  color: var(--text-2);
 }
 
-/* Start/Stop moved directly under the RPM display (was buried in the
-   footer control strip, off-screen below the fold on mobile — see
-   btn--start-engine usage in index.html) so it's reachable without
-   scrolling past the telemetry/powertrain panels. */
-.btn--start-engine {
-  width: min(100%, 220px);
+/* Brief pulse while the gearbox is "locked" mid-shift (see
+   engine-state.js SHIFT_LOCK_MS) — gives the same pause a visible cue
+   instead of the gear value just silently freezing for a quarter
+   second. */
+.gear-plate[data-shifting="true"] {
+  border-color: var(--accent-amber);
+}
+
+.gear-plate[data-shifting="true"] .gear-plate__value {
+  color: var(--accent-amber);
+  text-shadow: 0 0 12px rgba(255, 157, 26, 0.5);
+  opacity: 0.7;
 }
 
 /* ---------- Redline indicator (warning lamp above the gauge) ---------- */
@@ -327,43 +415,38 @@
   padding: 3px var(--sp-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-0);
-  background: var(--bg-2);
+  background: var(--bg-recess);
 }
 
 .redline-indicator__dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--accent-amber-dim);
+  background: var(--accent-red-dim);
 }
 
 .redline-indicator__label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: var(--tracking-wider);
   color: var(--text-2);
 }
 
 .redline-indicator[data-active="true"] {
-  border-color: var(--accent-danger);
-  background: rgba(255, 77, 77, 0.12);
+  border-color: var(--accent-red);
+  background: rgba(255, 47, 58, 0.14);
 }
 
 .redline-indicator[data-active="true"] .redline-indicator__dot {
-  background: var(--accent-danger);
-  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+  background: var(--accent-red);
+  box-shadow: var(--glow-red);
 }
 
 .redline-indicator[data-active="true"] .redline-indicator__label {
-  color: var(--accent-danger);
+  color: var(--accent-red);
 }
 
 /* ---------- Speed warning indicator (red-zone lamp on the speedometer) ---------- */
-/* Structurally identical to .redline-indicator, but this one's "off"
-   state is neutral/dim by design — going over the top-speed warning
-   zone is meant to read as more alarming than sitting at redline RPM
-   (which happens routinely under hard acceleration), so it snaps
-   straight to the danger color with no intermediate amber state. */
 .speed-warning-indicator {
   position: absolute;
   top: 14%;
@@ -375,7 +458,7 @@
   padding: 3px var(--sp-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-0);
-  background: var(--bg-2);
+  background: var(--bg-recess);
 }
 
 .speed-warning-indicator .redline-indicator__dot {
@@ -384,76 +467,41 @@
 }
 
 .speed-warning-indicator[data-active="true"] {
-  border-color: var(--accent-danger);
-  background: rgba(255, 77, 77, 0.14);
+  border-color: var(--accent-red);
+  background: rgba(255, 47, 58, 0.16);
 }
 
 .speed-warning-indicator[data-active="true"] .redline-indicator__dot {
-  background: var(--accent-danger);
+  background: var(--accent-red);
   opacity: 1;
-  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+  box-shadow: var(--glow-red);
 }
 
 .speed-warning-indicator[data-active="true"] .redline-indicator__label {
-  color: var(--accent-danger);
+  color: var(--accent-red);
 }
 
-/* ---------- Gear indicator (badge on the gauge face) ---------- */
-.gear-indicator {
-  position: absolute;
-  top: 14%;
-  right: 10%;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-1);
-  background: var(--bg-2);
-}
-
-.gear-indicator__value {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: var(--fs-lg);
-  color: var(--accent-cyan);
-  line-height: 1;
-}
-
-/* Brief pulse while the gearbox is "locked" mid-shift (see
-   engine-state.js SHIFT_LOCK_MS) — gives the same pause a visible cue
-   instead of the gear value just silently freezing for a quarter
-   second. */
-.gear-indicator[data-shifting="true"] {
-  border-color: var(--accent-amber);
-}
-
-.gear-indicator[data-shifting="true"] .gear-indicator__value {
-  color: var(--accent-amber);
-  opacity: 0.6;
-}
-
-/* ---------- Telemetry list ---------- */
+/* ---------- Telemetry ribbon (thin dividers, no boxed cards) ---------- */
 .telemetry-list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
 }
 
 .telemetry-item {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: var(--sp-3);
-  background: var(--bg-2);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-sm);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-0);
+}
+
+.telemetry-item:last-child {
+  border-bottom: none;
 }
 
 .telemetry-item__label {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 10px;
   color: var(--text-2);
   letter-spacing: var(--tracking-wide);
 }
@@ -466,6 +514,8 @@
 .telemetry-item__value--mono {
   font-family: var(--font-mono);
   color: var(--accent-cyan);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
 }
 
 .telemetry-item__value-group {
@@ -482,7 +532,7 @@
   padding: 3px var(--sp-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-1);
-  background: var(--bg-1);
+  background: var(--bg-2);
   color: var(--text-2);
   cursor: pointer;
   white-space: nowrap;
@@ -493,6 +543,15 @@
 .unit-toggle:hover {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
+}
+
+/* ---------- Gauge-face utility buttons ---------- */
+.unit-toggle--gauge {
+  width: min(100%, 220px);
+}
+
+.btn--start-engine {
+  width: min(100%, 220px);
 }
 
 /* ---------- Gear controls (mode + manual shift) ---------- */
@@ -565,7 +624,7 @@
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
+  height: 5px;
   border-radius: 3px;
   background: linear-gradient(90deg, var(--accent-cyan-dim), var(--accent-amber-dim));
   outline: none;
@@ -574,8 +633,8 @@
 .throttle-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--text-0);
   border: 2px solid var(--accent-cyan);
@@ -583,8 +642,8 @@
 }
 
 .throttle-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--text-0);
   border: 2px solid var(--accent-cyan);
@@ -595,7 +654,7 @@
   opacity: 0.4;
 }
 
-/* ---------- Throttle realtime indicator (vertical-feel bar) ---------- */
+/* ---------- Throttle realtime indicator ---------- */
 .throttle-indicator {
   display: flex;
   align-items: center;
@@ -604,9 +663,9 @@
 
 .throttle-indicator__track {
   flex: 1;
-  height: 8px;
+  height: 7px;
   border-radius: 4px;
-  background: var(--bg-2);
+  background: var(--bg-recess);
   border: 1px solid var(--border-0);
   overflow: hidden;
 }
@@ -676,7 +735,7 @@
   background: var(--accent-cyan);
   border-color: var(--accent-cyan);
   color: var(--bg-0);
-  box-shadow: 0 0 16px rgba(41, 224, 232, 0.35);
+  box-shadow: var(--glow-cyan);
 }
 
 .btn--throttle[data-pressed="true"] .btn--throttle__hint {
@@ -697,7 +756,7 @@
   height: 92px;
   border-radius: 50%;
   border: 2px solid var(--accent-cyan-dim);
-  background: radial-gradient(circle at 35% 30%, var(--bg-3), var(--bg-1) 70%);
+  background: radial-gradient(circle at 35% 30%, var(--bg-3), var(--bg-recess) 70%);
   box-shadow: var(--shadow-panel);
   flex-direction: column;
   align-items: center;
@@ -735,8 +794,8 @@
 
 .throttle-pedal[data-pressed="true"] {
   border-color: var(--accent-cyan);
-  background: radial-gradient(circle at 35% 30%, var(--accent-cyan-dim), var(--bg-1) 75%);
-  box-shadow: 0 0 24px rgba(41, 224, 232, 0.45);
+  background: radial-gradient(circle at 35% 30%, var(--accent-cyan-dim), var(--bg-recess) 75%);
+  box-shadow: var(--glow-cyan);
   transform: scale(0.96);
 }
 
@@ -790,7 +849,7 @@
   justify-content: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-0);
-  background: var(--bg-1);
+  background: var(--bg-recess);
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: var(--fs-lg);
@@ -843,12 +902,12 @@
 }
 
 .btn--danger {
-  border-color: var(--accent-danger);
-  color: var(--accent-danger);
+  border-color: var(--accent-red);
+  color: var(--accent-red);
 }
 
 .btn--danger:not(:disabled):hover {
-  background: var(--accent-danger);
+  background: var(--accent-red);
   color: var(--bg-0);
 }
 
@@ -866,7 +925,7 @@
 
 /* ---------- System log ---------- */
 .log {
-  background: var(--bg-0);
+  background: var(--bg-recess);
   border: 1px solid var(--border-0);
   border-radius: var(--radius-sm);
   padding: var(--sp-2) var(--sp-3);

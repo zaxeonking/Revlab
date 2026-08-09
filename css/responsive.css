@@ -7,17 +7,25 @@
     grid-template-areas:
       "gauge gauge"
       "engine telemetry";
-    gap: var(--sp-4);
-    padding: var(--sp-5);
+    margin: var(--sp-4) var(--sp-5) 0;
   }
 
   .panel--gauge   { grid-area: gauge; }
-  .panel--engine  { grid-area: engine; }
-  .panel--telemetry { grid-area: telemetry; }
+  .panel--engine  {
+    grid-area: engine;
+    border-right: none;
+    border-top: 1px solid var(--border-0);
+  }
+  .panel--telemetry {
+    grid-area: telemetry;
+    border-left: 1px solid var(--border-0);
+    border-top: 1px solid var(--border-0);
+  }
 
   .controls {
     grid-template-columns: 1fr;
     gap: var(--sp-4);
+    margin: var(--sp-4) var(--sp-5) var(--sp-5);
   }
 
   .controls__group--action {
@@ -25,15 +33,27 @@
   }
 }
 
-/* ---------- Mobile ---------- */
+/* ---------- Mobile: compact cockpit stack, not stacked cards ---------- */
 @media (max-width: 640px) {
   .topbar {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4);
   }
 
+  .topbar__brand {
+    order: 1;
+  }
+
+  .shiftlights {
+    order: 0;
+  }
+
   .topbar__status {
+    order: 2;
     width: 100%;
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .dash {
@@ -42,20 +62,48 @@
       "gauge"
       "engine"
       "telemetry";
+    margin: var(--sp-3) var(--sp-3) 0;
+  }
+
+  .panel--engine {
+    border-top: 1px solid var(--border-0);
+    border-right: none;
+  }
+
+  .panel--telemetry {
+    border-left: none;
+    border-top: 1px solid var(--border-0);
+  }
+
+  .panel {
     padding: var(--sp-4);
-    gap: var(--sp-4);
   }
 
   .gauge-wrap {
-    width: min(80vw, 260px);
+    width: min(78vw, 250px);
   }
 
   /* Paired speedometer + tachometer stay side by side even here — only
-     the cap shrinks (calc() above already sizes each to exactly half
-     the row, so this just keeps them from getting too big, same as
-     the desktop rule). */
+     the cap and the docked gear plate between them shrink. */
+  .gauge-pair {
+    gap: var(--sp-2);
+  }
+
   .gauge-pair .gauge-wrap {
-    max-width: 150px;
+    max-width: 132px;
+  }
+
+  .gauge-wrap--paired {
+    width: calc((100% - var(--sp-2) * 2 - 64px) / 2);
+  }
+
+  .gear-plate {
+    width: 60px;
+    height: 76px;
+  }
+
+  .gear-plate__value {
+    font-size: 1.9rem;
   }
 
   .fs-2xl,
@@ -65,6 +113,7 @@
 
   .controls {
     padding: var(--sp-4);
+    margin: var(--sp-3) var(--sp-3) var(--sp-5);
     /* leave room at the bottom-right so the fixed pedal never overlaps
        the log/controls content underneath it */
     padding-bottom: calc(var(--sp-4) + 108px);

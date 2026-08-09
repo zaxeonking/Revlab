@@ -62,7 +62,61 @@ const UIController = (() => {
       gearboxFinalDrive: document.getElementById('gearboxFinalDrive'),
       gearboxWheelCirc: document.getElementById('gearboxWheelCirc'),
       gearboxEfficiency: document.getElementById('gearboxEfficiency'),
+
+      shiftLights: document.getElementById('shiftLights'),
     };
+  }
+
+  // ---- Shift-light bar --------------------------------------------------
+  // Purely a re-presentation of the real RPM signal EngineState already
+  // exposes (state.rpmK / state.maxRpmK / state.redlineStartK, both of
+  // which pass straight through from RPMSimulator's real constants — see
+  // engine-state.js) — no separate random/fake value, same principle as
+  // renderGearboxSpec() above never hand-typing numbers RPMSimulator owns.
+  const SHIFT_LIGHT_COUNT = 12;
+  let shiftLightEls = [];
+
+  function buildShiftLights() {
+    if (!els.shiftLights) return;
+    els.shiftLights.innerHTML = '';
+    shiftLightEls = [];
+    for (let i = 0; i < SHIFT_LIGHT_COUNT; i += 1) {
+      const t = (i + 1) / SHIFT_LIGHT_COUNT; // 0..1 position along the bar
+      const band = t > 0.83 ? 'hi' : t > 0.58 ? 'mid' : 'lo';
+      const dot = document.createElement('span');
+      dot.className = 'shiftlight';
+      dot.dataset.band = band;
+      dot.dataset.on = 'false';
+      els.shiftLights.appendChild(dot);
+      shiftLightEls.push(dot);
+    }
+  }
+
+  let wasInRedline = false;
+
+  function renderShiftLights(state) {
+    if (!shiftLightEls.length) return;
+    // Bar fills relative to the redline start, not the absolute dial
+    // ceiling, so the lights climb across the whole usable rev range
+    // instead of only lighting up in the last sliver before redline.
+    const fraction = state.engineOn && state.redlineStartK > 0
+      ? Math.min(state.rpmK / state.redlineStartK, 1)
+      : 0;
+    const litCount = Math.round(fraction * SHIFT_LIGHT_COUNT);
+
+    shiftLightEls.forEach((dot, i) => {
+      dot.dataset.on = i < litCount ? 'true' : 'false';
+    });
+
+    // Brief flash across the whole bar the instant redline/limiter is
+    // hit — a single flash per rising edge, not every frame while held.
+    if (state.inRedline && !wasInRedline) {
+      shiftLightEls.forEach((dot) => {
+        dot.dataset.flash = 'true';
+        setTimeout(() => { dot.dataset.flash = 'false'; }, 500);
+      });
+    }
+    wasInRedline = state.inRedline;
   }
 
   /** One-time render of the drivetrain spec panel — these numbers never
@@ -155,6 +209,7 @@ const UIController = (() => {
    */
   function render(state) {
     if (gaugeRef) gaugeRef.setValueK(state.rpmK);
+    renderShiftLights(state);
 
     // Angka RPM sengaja dikunci ke 0 selama gigi N — jarum tetap mengikuti
     // RPM asli (revving di netral tetap kelihatan gerak), tapi angka
@@ -399,6 +454,7 @@ const UIController = (() => {
     gaugeRef = gauge;
     speedGaugeRef = speedGauge;
     cacheEls();
+    buildShiftLights();
     renderGearboxSpec();
     bindThrottleSlider();
     bindSpeedUnitToggle();
