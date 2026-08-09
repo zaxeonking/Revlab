@@ -335,19 +335,33 @@ const AudioEngine = (() => {
     const throttleFraction = clamp01((frame.throttlePercent || 0) / 100);
     const fundFreq = IDLE_FREQ_HZ + fraction * (MAX_FREQ_HZ - IDLE_FREQ_HZ);
 
+    // ---- SOUND LAB crossfade -------------------------------------------------
+    // If the user has loaded a custom sample for a given band (via
+    // SoundLab, sound-lab.js), duck this layer's synth gain toward 0 so
+    // the custom sample is heard cleanly instead of layered underneath
+    // it. Falls back to full synth (duck = 1) whenever SoundLab isn't
+    // loaded yet or has no custom sample for that category — so this is
+    // a no-op if sound-lab.js is ever removed/omitted.
+    const SL = window.SoundLab;
+    const duck = (category) => (SL && SL.hasCustom(category)) ? 0 : 1;
+    const lowDuck = duck('low');
+    const midDuck = duck('mid');
+    const highDuck = duck('high');
+    const limiterDuck = duck('limiter');
+
     // ---- Layer 1: ENGINE LOW — pitch + level, RPM-driven -------------------
     glide(oscLow1.frequency, fundFreq / 4);
     glide(oscLow2.frequency, fundFreq / 2);
-    glide(lowLayerGain.gain, LOW_GAIN_MIN + fraction * (LOW_GAIN_MAX - LOW_GAIN_MIN));
+    glide(lowLayerGain.gain, (LOW_GAIN_MIN + fraction * (LOW_GAIN_MAX - LOW_GAIN_MIN)) * lowDuck);
 
     // ---- Layer 2: ENGINE MID — pitch RPM-driven, level ~constant -----------
     glide(oscMid.frequency, fundFreq);
-    glide(midLayerGain.gain, MID_GAIN);
+    glide(midLayerGain.gain, MID_GAIN * midDuck);
 
     // ---- Layer 3: ENGINE HIGH — fades in with RPM ---------------------------
     glide(oscHigh1.frequency, fundFreq * 2);
     glide(oscHigh2.frequency, fundFreq * 3);
-    glide(highLayerGain.gain, HIGH_GAIN_MIN + fraction * (HIGH_GAIN_MAX - HIGH_GAIN_MIN));
+    glide(highLayerGain.gain, (HIGH_GAIN_MIN + fraction * (HIGH_GAIN_MAX - HIGH_GAIN_MIN)) * highDuck);
     glide(gainHigh1.gain, 0.7);
     glide(gainHigh2.gain, HIGH2_GAIN_MIN + fraction * (HIGH2_GAIN_MAX - HIGH2_GAIN_MIN));
 
@@ -359,7 +373,7 @@ const AudioEngine = (() => {
     glide(intakeFilter.frequency, INTAKE_FILTER_MIN_HZ + fraction * (INTAKE_FILTER_MAX_HZ - INTAKE_FILTER_MIN_HZ));
 
     // ---- Layer 5: REV LIMITER — stutter only while actually limiting --------
-    glide(limiterLfoDepthGain.gain, frame.revLimiting ? LIMITER_LFO_DEPTH : 0, 0.03);
+    glide(limiterLfoDepthGain.gain, (frame.revLimiting ? LIMITER_LFO_DEPTH : 0) * limiterDuck, 0.03);
 
     // ---- Shared tone filter (all layers) — opens up with RPM -----------------
     glide(toneFilter.frequency, TONE_FILTER_MIN_HZ + fraction * (TONE_FILTER_MAX_HZ - TONE_FILTER_MIN_HZ));

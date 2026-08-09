@@ -73,6 +73,16 @@ const UIController = (() => {
       vehicleSetupEngineGrid: document.getElementById('vehicleSetupEngineGrid'),
       vehicleSetupDrivetrainGrid: document.getElementById('vehicleSetupDrivetrainGrid'),
       vehicleSetupGearRatios: document.getElementById('vehicleSetupGearRatios'),
+
+      soundLabOpenBtn: document.getElementById('soundLabOpenBtn'),
+      soundLabOverlay: document.getElementById('soundLabOverlay'),
+      soundLabCloseBtn: document.getElementById('soundLabCloseBtn'),
+      soundLabDoneBtn: document.getElementById('soundLabDoneBtn'),
+      soundLabResetBtn: document.getElementById('soundLabResetBtn'),
+      soundLabGrid: document.getElementById('soundLabGrid'),
+      soundLabStatus: document.getElementById('soundLabStatus'),
+      soundLabMasterVolume: document.getElementById('soundLabMasterVolume'),
+      soundLabMasterVolumeValue: document.getElementById('soundLabMasterVolumeValue'),
     };
   }
 
@@ -614,6 +624,220 @@ const UIController = (() => {
     });
   }
 
+  // ---- SOUND LAB panel ---------------------------------------------------
+  // Builds one card per SoundLab category (Idle / Low / Mid / High /
+  // Limiter / Turbo / Shift), generated from SoundLab.CATEGORIES so the
+  // markup can never list a category the module doesn't actually support.
+  // Each card: hidden <input type="file" accept="audio/*"> + a visible
+  // "CHOOSE FILE" button (styled trigger), filename readout, ▶ PREVIEW,
+  // ✕ REMOVE, and a per-category volume slider. All file reads go through
+  // SoundLab.loadFile(), which only ever uses the local File API /
+  // URL.createObjectURL — no network request is made anywhere in this
+  // flow (see sound-lab.js header comment).
+  let soundLabFileInputEls = {};
+  let soundLabFileNameEls = {};
+  let soundLabRemoveBtnEls = {};
+  let soundLabVolumeEls = {};
+  let soundLabVolumeValueEls = {};
+  let soundLabPreviewBtnEls = {};
+
+  function buildSoundLabGrid() {
+    if (!els.soundLabGrid) return;
+    els.soundLabGrid.innerHTML = '';
+    soundLabFileInputEls = {};
+    soundLabFileNameEls = {};
+    soundLabRemoveBtnEls = {};
+    soundLabVolumeEls = {};
+    soundLabVolumeValueEls = {};
+    soundLabPreviewBtnEls = {};
+
+    SoundLab.CATEGORIES.forEach((cat) => {
+      const meta = SoundLab.CATEGORY_META[cat];
+
+      const card = document.createElement('div');
+      card.className = 'soundlab-card';
+      card.dataset.category = cat;
+
+      const inputId = `soundLabFile-${cat}`;
+
+      card.innerHTML = `
+        <div class="soundlab-card__head">
+          <span class="soundlab-card__label">${meta.label}</span>
+          <span class="soundlab-card__badge" data-state="synth">SYNTH</span>
+        </div>
+        <p class="soundlab-card__hint">${meta.hint}</p>
+
+        <div class="soundlab-card__file">
+          <label class="btn btn--setup soundlab-card__choose" for="${inputId}">PILIH FILE</label>
+          <input
+            type="file"
+            id="${inputId}"
+            class="soundlab-card__input"
+            accept="audio/*"
+            aria-label="Pilih file audio lokal untuk ${meta.label}"
+          />
+          <span class="soundlab-card__filename" data-empty="true">Tidak ada file dipilih</span>
+        </div>
+
+        <div class="soundlab-card__actions">
+          <button type="button" class="btn btn--soundlab-mini soundlab-card__preview" disabled>▶ PREVIEW</button>
+          <button type="button" class="btn btn--soundlab-mini soundlab-card__remove" disabled>✕ REMOVE</button>
+        </div>
+
+        <div class="soundlab-card__volume">
+          <span class="field__label">VOLUME</span>
+          <input type="range" min="0" max="100" value="100" class="soundlab-card__volumeSlider" />
+          <span class="soundlab-card__volumeValue">100%</span>
+        </div>
+      `;
+
+      els.soundLabGrid.appendChild(card);
+
+      soundLabFileInputEls[cat] = card.querySelector('.soundlab-card__input');
+      soundLabFileNameEls[cat] = card.querySelector('.soundlab-card__filename');
+      soundLabPreviewBtnEls[cat] = card.querySelector('.soundlab-card__preview');
+      soundLabRemoveBtnEls[cat] = card.querySelector('.soundlab-card__remove');
+      soundLabVolumeEls[cat] = card.querySelector('.soundlab-card__volumeSlider');
+      soundLabVolumeValueEls[cat] = card.querySelector('.soundlab-card__volumeValue');
+
+      // ---- File pick: local File API only, never a network upload ------
+      soundLabFileInputEls[cat].addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const result = SoundLab.loadFile(cat, file);
+        if (!result.ok) {
+          if (result.reason === 'not_audio') {
+            logLine(`SOUND LAB — "${file.name}" ditolak: bukan file audio.`);
+          } else {
+            logLine(`SOUND LAB — gagal memuat file untuk ${meta.label}.`);
+          }
+          e.target.value = '';
+          return;
+        }
+        logLine(`SOUND LAB — ${meta.label}: "${result.name}" dimuat (lokal, tidak diupload).`);
+      });
+
+      soundLabPreviewBtnEls[cat].addEventListener('click', () => {
+        SoundLab.preview(cat);
+      });
+
+      soundLabRemoveBtnEls[cat].addEventListener('click', () => {
+        SoundLab.removeCategory(cat);
+        soundLabFileInputEls[cat].value = '';
+        logLine(`SOUND LAB — audio custom ${meta.label} dihapus, kembali ke sintesis.`);
+      });
+
+      soundLabVolumeEls[cat].addEventListener('input', (e) => {
+        const v = Number(e.target.value) / 100;
+        SoundLab.setVolume(cat, v);
+        soundLabVolumeValueEls[cat].textContent = `${Math.round(v * 100)}%`;
+      });
+    });
+  }
+
+  /** Re-renders every Sound Lab card from SoundLab's current snapshot —
+   *  called on init and whenever SoundLab notifies a change (load /
+   *  remove / reset / volume), so file pick can happen from anywhere
+   *  (including a stale card after RESET SEMUA) and the UI stays truthful. */
+  function renderSoundLab(snapshot) {
+    if (!els.soundLabGrid) return;
+    const data = snapshot || SoundLab.getSnapshot();
+
+    SoundLab.CATEGORIES.forEach((cat) => {
+      const info = data.categories[cat];
+      const card = els.soundLabGrid.querySelector(`.soundlab-card[data-category="${cat}"]`);
+      if (!card) return;
+      const badge = card.querySelector('.soundlab-card__badge');
+      const filenameEl = soundLabFileNameEls[cat];
+      const previewBtn = soundLabPreviewBtnEls[cat];
+      const removeBtn = soundLabRemoveBtnEls[cat];
+      const volumeEl = soundLabVolumeEls[cat];
+      const volumeValueEl = soundLabVolumeValueEls[cat];
+
+      if (info.hasCustom) {
+        badge.textContent = 'CUSTOM';
+        badge.dataset.state = 'custom';
+        filenameEl.textContent = info.fileName;
+        filenameEl.dataset.empty = 'false';
+        previewBtn.disabled = false;
+        removeBtn.disabled = false;
+      } else {
+        badge.textContent = 'SYNTH';
+        badge.dataset.state = 'synth';
+        filenameEl.textContent = 'Tidak ada file dipilih';
+        filenameEl.dataset.empty = 'true';
+        previewBtn.disabled = true;
+        removeBtn.disabled = true;
+      }
+
+      if (document.activeElement !== volumeEl) {
+        volumeEl.value = Math.round(info.volume * 100);
+      }
+      volumeValueEl.textContent = `${Math.round(info.volume * 100)}%`;
+    });
+
+    if (els.soundLabStatus) {
+      const customCount = SoundLab.CATEGORIES.filter((cat) => data.categories[cat].hasCustom).length;
+      els.soundLabStatus.textContent = customCount === 0
+        ? 'Belum ada audio custom — memakai mesin sintesis.'
+        : `${customCount} dari ${SoundLab.CATEGORIES.length} kategori memakai audio custom lokal.`;
+    }
+
+    if (els.soundLabMasterVolume && document.activeElement !== els.soundLabMasterVolume) {
+      els.soundLabMasterVolume.value = Math.round(data.masterVolume * 100);
+    }
+    if (els.soundLabMasterVolumeValue) {
+      els.soundLabMasterVolumeValue.textContent = `${Math.round(data.masterVolume * 100)}%`;
+    }
+  }
+
+  function openSoundLab() {
+    if (!els.soundLabOverlay) return;
+    els.soundLabOverlay.dataset.open = 'true';
+    els.soundLabOverlay.setAttribute('aria-hidden', 'false');
+    renderSoundLab();
+  }
+
+  function closeSoundLab() {
+    if (!els.soundLabOverlay) return;
+    els.soundLabOverlay.dataset.open = 'false';
+    els.soundLabOverlay.setAttribute('aria-hidden', 'true');
+    // Stop any preview that might still be playing when the panel closes.
+    SoundLab.CATEGORIES.forEach((cat) => SoundLab.stopPreview(cat));
+  }
+
+  function bindSoundLabPanel() {
+    if (els.soundLabOpenBtn) els.soundLabOpenBtn.addEventListener('click', openSoundLab);
+    if (els.soundLabCloseBtn) els.soundLabCloseBtn.addEventListener('click', closeSoundLab);
+    if (els.soundLabDoneBtn) els.soundLabDoneBtn.addEventListener('click', closeSoundLab);
+    if (els.soundLabOverlay) {
+      els.soundLabOverlay.addEventListener('click', (e) => {
+        if (e.target === els.soundLabOverlay) closeSoundLab();
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && els.soundLabOverlay && els.soundLabOverlay.dataset.open === 'true') {
+        closeSoundLab();
+      }
+    });
+    if (els.soundLabResetBtn) {
+      els.soundLabResetBtn.addEventListener('click', () => {
+        SoundLab.resetAll();
+        SoundLab.CATEGORIES.forEach((cat) => {
+          if (soundLabFileInputEls[cat]) soundLabFileInputEls[cat].value = '';
+        });
+        logLine('SOUND LAB — RESET SEMUA: semua kategori kembali ke mesin sintesis.');
+      });
+    }
+    if (els.soundLabMasterVolume) {
+      els.soundLabMasterVolume.addEventListener('input', (e) => {
+        const v = Number(e.target.value) / 100;
+        SoundLab.setMasterVolume(v);
+      });
+    }
+    SoundLab.subscribe(renderSoundLab);
+  }
+
   function openVehicleSetup() {
     if (!els.vehicleSetupOverlay) return;
     els.vehicleSetupOverlay.dataset.open = 'true';
@@ -690,6 +914,9 @@ const UIController = (() => {
     bindStartButton();
     buildVehicleSetupForm();
     bindVehicleSetupPanel();
+    buildSoundLabGrid();
+    bindSoundLabPanel();
+    renderSoundLab();
     setAudioStatusLabel('AUDIO ENGINE: NOT INITIALIZED');
 
     EngineState.subscribe((state) => {
@@ -697,6 +924,12 @@ const UIController = (() => {
       // AudioEngine.update() is a no-op until AudioEngine.init() has run
       // (first Start Engine click) — safe to call every frame regardless.
       AudioEngine.update(state);
+      // SoundLab only ever touches categories that actually have a custom
+      // sample loaded (see sound-lab.js) — every other category is left
+      // to AudioEngine's synthesis above, untouched. Runs every frame
+      // regardless of whether any custom sample is loaded; it's a no-op
+      // per-category otherwise.
+      SoundLab.update(state);
       if (!state.engineOn) setAudioStatusLabel(
         AudioEngine.getState().isInitialized ? 'AUDIO ENGINE: STANDBY' : 'AUDIO ENGINE: NOT INITIALIZED'
       );

@@ -42,4 +42,5 @@ document.addEventListener('DOMContentLoaded', () => {
   console.info('[VehicleSetup] current parameters:', VehicleSetup.getAll());
   console.info('[RPMSimulator] current state:', RPMSimulator.getState());
   console.info('[AudioEngine] current state:', AudioEngine.getState());
+  console.info('[SoundLab] current snapshot:', SoundLab.getSnapshot());
 });

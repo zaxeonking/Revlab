@@ -115,6 +115,12 @@
           class="btn btn--performance"
           type="button"
         >PERFORMANCE MODE</button>
+
+        <button
+          id="soundLabOpenBtn"
+          class="btn btn--soundlab"
+          type="button"
+        >SOUND LAB</button>
       </section>
 
       <!-- CENTER: HERO — SPEEDOMETER + TACHOMETER, side by side -->
@@ -473,6 +479,50 @@
       </div>
     </div>
 
+    <!-- ============ SOUND LAB (modal) ============ -->
+    <!-- Lets the user load their OWN local audio files (Idle / Low RPM /
+         Mid RPM / High RPM / Limiter / Turbo / Shift) via <input
+         type="file"> + the File API. Files are read entirely client-side
+         (URL.createObjectURL) — nothing is ever uploaded anywhere. Any
+         category with no custom sample loaded automatically falls back
+         to AudioEngine's synthesized Web Audio layer for that category —
+         see js/modules/sound-lab.js. Cards are built dynamically by
+         ui-controller.js from SoundLab.CATEGORIES, not hand-typed here,
+         so this markup can't drift out of sync with the categories the
+         module actually supports. -->
+    <div class="modal-overlay" id="soundLabOverlay" data-open="false" aria-hidden="true">
+      <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="soundLabTitle">
+        <div class="modal__header">
+          <h2 class="modal__title" id="soundLabTitle">SOUND LAB</h2>
+          <button class="modal__close" id="soundLabCloseBtn" type="button" aria-label="Tutup Sound Lab">✕</button>
+        </div>
+
+        <div class="modal__body">
+          <p class="field__hint soundlab-privacy">
+            🔒 Semua file audio diproses <strong>sepenuhnya di perangkat ini</strong> lewat File API browser — tidak ada yang diupload ke server mana pun. Kategori tanpa audio custom otomatis memakai mesin suara sintesis (Web Audio) bawaan REVLAB.
+          </p>
+
+          <div class="field soundlab-master">
+            <label class="field__label" for="soundLabMasterVolume">MASTER VOLUME (SOUND LAB)</label>
+            <div class="soundlab-volume">
+              <input type="range" id="soundLabMasterVolume" min="0" max="100" value="100" step="1" />
+              <span class="soundlab-volume__value" id="soundLabMasterVolumeValue">100%</span>
+            </div>
+          </div>
+
+          <div class="soundlab-grid" id="soundLabGrid" aria-label="Kategori suara mesin"></div>
+        </div>
+
+        <div class="modal__footer">
+          <span class="field__hint" id="soundLabStatus">Belum ada audio custom — memakai mesin sintesis.</span>
+          <div class="modal__actions">
+            <button class="btn btn--danger" id="soundLabResetBtn" type="button">RESET SEMUA</button>
+            <button class="btn btn--primary" id="soundLabDoneBtn" type="button">SELESAI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="js/modules/gauge.js"></script>
@@ -482,6 +532,7 @@
   <script src="js/modules/engine-state.js"></script>
   <script src="js/modules/vehicle-setup.js"></script>
   <script src="js/modules/audio-engine.js"></script>
+  <script src="js/modules/sound-lab.js"></script>
   <script src="js/modules/throttle-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>
   <script src="js/modules/performance-mode.js"></script>
