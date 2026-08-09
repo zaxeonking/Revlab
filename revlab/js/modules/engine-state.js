@@ -442,6 +442,13 @@ const EngineState = (() => {
     torqueNm: 0,
     powerHp: 0,
     powerKw: 0,
+    // TELEMETRY PANEL addition — see deriveFromFrame() below. Reuses the
+    // exact same loadFactor PERFORMANCE MODE's torque/power blend already
+    // computes (throttle position blended toward an idle-load floor) —
+    // exposed as its own percentage rather than duplicating the formula,
+    // since "how hard the engine is currently working" is precisely what
+    // that blend already represents.
+    engineLoadPercent: 0,
     paused: false,
   };
 
@@ -612,10 +619,12 @@ const EngineState = (() => {
       state.torqueNm = Math.round(peakTorqueNm * curveFrac * loadFactor);
       state.powerHp = Math.round((state.torqueNm * frame.rpm) / 7127);
       state.powerKw = Math.round(state.powerHp * 0.7457 * 10) / 10;
+      state.engineLoadPercent = Math.round(loadFactor * 100);
     } else {
       state.torqueNm = 0;
       state.powerHp = 0;
       state.powerKw = 0;
+      state.engineLoadPercent = 0;
     }
 
     if (!frame.engineOn) {
@@ -778,6 +787,7 @@ const EngineState = (() => {
       torqueNm: 0,
       powerHp: 0,
       powerKw: 0,
+      engineLoadPercent: 0,
       paused: false,
     };
     notify();

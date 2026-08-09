@@ -123,6 +123,18 @@
         >PERFORMANCE MODE</button>
 
         <button
+          id="accelModeOpenBtn"
+          class="btn btn--accel"
+          type="button"
+        >ACCELERATION MODE</button>
+
+        <button
+          id="telemetryPanelOpenBtn"
+          class="btn btn--telemetry"
+          type="button"
+        >TELEMETRY PANEL</button>
+
+        <button
           id="soundLabOpenBtn"
           class="btn btn--soundlab"
           type="button"
@@ -526,6 +538,136 @@
       </div>
     </div>
 
+    <!-- ============ ACCELERATION MODE (modal) ============ -->
+    <!-- Standing-start (0 KPH) acceleration run: LAUNCH floors the
+         throttle from a clean reset baseline, gear mode is forced to
+         AUTO for the run so the gearbox shifts itself, and every split
+         time below is computed by interpolating the SAME EngineState
+         speed signal every other gauge in REVLAB reads — see
+         js/modules/acceleration-mode.js. Nothing here is random or
+         hand-typed. -->
+    <div class="modal-overlay" id="accelModeOverlay" data-open="false" aria-hidden="true">
+      <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="accelModeTitle">
+        <div class="modal__header">
+          <h2 class="modal__title" id="accelModeTitle">ACCELERATION MODE</h2>
+          <button class="modal__close" id="accelModeCloseBtn" type="button" aria-label="Tutup Acceleration Mode">✕</button>
+        </div>
+
+        <div class="modal__body">
+
+          <section class="perf-readouts" aria-label="Acceleration readouts">
+            <div class="perf-stat">
+              <span class="perf-stat__label">SPEED</span>
+              <span class="perf-stat__value" id="accelSpeed">0<small class="perf-stat__unit" id="accelSpeedUnit">KM/H</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">GEAR</span>
+              <span class="perf-stat__value" id="accelGear">N</span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">RPM</span>
+              <span class="perf-stat__value" id="accelRpm">0<small class="perf-stat__unit">RPM</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">THROTTLE</span>
+              <span class="perf-stat__value" id="accelThrottle">0<small class="perf-stat__unit">%</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">ELAPSED TIME</span>
+              <span class="perf-stat__value" id="accelElapsed">0.00<small class="perf-stat__unit">S</small></span>
+            </div>
+          </section>
+
+          <section class="accel-ladder" id="accelLadder" aria-label="Hasil split akselerasi"></section>
+
+          <p class="field__hint">LAUNCH selalu mulai dari 0 KPH (reset otomatis), throttle 100%, gear AUTO. Split 0–100 MPH hanya muncul saat satuan kecepatan kokpit diset ke MPH. Semua waktu dihitung dari sinyal speed simulator (EngineState) yang sama dengan speedometer kokpit — bukan angka acak.</p>
+        </div>
+
+        <div class="modal__footer">
+          <span class="perf-sim-state" id="accelStatusLabel" data-state="idle">STANDBY — SIAP LAUNCH</span>
+          <div class="modal__actions">
+            <button class="btn btn--danger" id="accelResetBtn" type="button">RESET</button>
+            <button class="btn btn--setup" id="accelStopBtn" type="button" disabled>STOP</button>
+            <button class="btn btn--primary" id="accelLaunchBtn" type="button">LAUNCH</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELEMETRY PANEL (modal) ============ -->
+    <!-- Realtime data grid + event log, both sourced from EngineState.
+         The event log is edge-detected off simulation state (engineOn,
+         gearShiftEventId, inRedline, revLimiting, engineTempC, speedKmh
+         vs the Top Speed governor) — see js/modules/telemetry-panel.js.
+         Detection runs continuously in the background, not just while
+         this panel happens to be open. -->
+    <div class="modal-overlay" id="telemetryPanelOverlay" data-open="false" aria-hidden="true">
+      <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="telemetryPanelTitle">
+        <div class="modal__header">
+          <h2 class="modal__title" id="telemetryPanelTitle">TELEMETRY PANEL</h2>
+          <button class="modal__close" id="telemetryPanelCloseBtn" type="button" aria-label="Tutup Telemetry Panel">✕</button>
+        </div>
+
+        <div class="modal__body">
+
+          <section class="perf-readouts" aria-label="Data telemetri realtime">
+            <div class="perf-stat">
+              <span class="perf-stat__label">SPEED</span>
+              <span class="perf-stat__value" id="telemetrySpeed">0<small class="perf-stat__unit" id="telemetrySpeedUnit">KM/H</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">RPM</span>
+              <span class="perf-stat__value" id="telemetryRpm">0<small class="perf-stat__unit">RPM</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">GEAR</span>
+              <span class="perf-stat__value" id="telemetryGear">N</span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">THROTTLE</span>
+              <span class="perf-stat__value" id="telemetryThrottle">0<small class="perf-stat__unit">%</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">TORQUE</span>
+              <span class="perf-stat__value" id="telemetryTorque">0<small class="perf-stat__unit">NM</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">POWER</span>
+              <span class="perf-stat__value" id="telemetryPower">0<small class="perf-stat__unit">HP</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">BOOST</span>
+              <span class="perf-stat__value" id="telemetryBoost">0.00<small class="perf-stat__unit">BAR</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">TEMPERATURE</span>
+              <span class="perf-stat__value" id="telemetryTemp">24<small class="perf-stat__unit">°C</small></span>
+            </div>
+            <div class="perf-stat">
+              <span class="perf-stat__label">ENGINE LOAD</span>
+              <span class="perf-stat__value" id="telemetryLoad">0<small class="perf-stat__unit">%</small></span>
+            </div>
+          </section>
+
+          <section class="telemetry-events" aria-label="Event log">
+            <div class="telemetry-events__header">
+              <span class="perf-graph__title">EVENT LOG</span>
+              <button class="btn btn--danger btn--small" id="telemetryClearLogBtn" type="button">CLEAR LOG</button>
+            </div>
+            <div class="telemetry-log" id="telemetryEventLog"></div>
+          </section>
+
+          <p class="field__hint">Event (ENGINE START/STOP, GEAR SHIFT, REDLINE, LIMITER, OVERHEAT, TOP SPEED) dideteksi langsung dari perubahan state simulator (EngineState) — bukan dipicu manual dan bukan angka acak.</p>
+        </div>
+
+        <div class="modal__footer">
+          <div class="modal__actions">
+            <button class="btn btn--primary" id="telemetryPanelDoneBtn" type="button">SELESAI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ SOUND LAB (modal) ============ -->
     <!-- Lets the user load their OWN local audio files (Idle / Low RPM /
          Mid RPM / High RPM / Limiter / Turbo / Shift) via <input
@@ -585,6 +727,8 @@
   <script src="js/modules/throttle-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>
   <script src="js/modules/performance-mode.js"></script>
+  <script src="js/modules/acceleration-mode.js"></script>
+  <script src="js/modules/telemetry-panel.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

@@ -1109,5 +1109,14 @@ const UIController = (() => {
     logLine('Gear: Shift (up) / Ctrl (down), tombol SHIFT ▲▼, atau shifter mobile.');
   }
 
-  return { init, logLine, setEngineStatus, setAudioStatusLabel };
+  // Read-only accessor for the current speed display preference
+  // ('kmh' | 'mph') — used by AccelerationMode (js/modules/
+  // acceleration-mode.js) to decide whether the 0–100 MPH split is
+  // applicable, and to format its own SPEED readout in the same unit
+  // the driver already has selected in the cockpit.
+  function getSpeedUnit() {
+    return speedUnit;
+  }
+
+  return { init, logLine, setEngineStatus, setAudioStatusLabel, getSpeedUnit };
 })();

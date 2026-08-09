@@ -415,6 +415,95 @@ START ENGINE di kokpit utama (bukan simulasi paralel terpisah):
   `EngineState` ke kondisi bersih (mesin mati, RPM 0, gigi N, speed 0),
   dan mengosongkan buffer riwayat grafik.
 
+## ACCELERATION MODE (`acceleration-mode.js`)
+
+Panel baru — tombol **ACCELERATION MODE** (di bawah PERFORMANCE MODE)
+membuka modal pengujian akselerasi standing-start (mulai dari 0 KPH).
+
+Menampilkan realtime: **SPEED** (mengikuti satuan KM/H⇄MPH yang aktif di
+kokpit), **GEAR**, **RPM**, **THROTTLE**, dan **ELAPSED TIME**.
+
+Menghitung split (semua dari sinyal speed simulator yang sama dipakai
+speedometer kokpit, diinterpolasi antar-frame — bukan `Math.random()`
+dan bukan tabel angka hasil ketik manual):
+
+- 0–60 KM/H
+- 0–100 KM/H
+- 0–160 KM/H
+- 0–200 KM/H
+- 0–100 MPH — **hanya muncul jika satuan kecepatan kokpit sedang diset
+  ke MPH** (toggle satuan di panel speedometer)
+
+### Launch behavior
+
+Tombol **LAUNCH**:
+
+1. Selalu mulai dari kondisi bersih — `EngineState.resetSimulation()`
+   dipanggil lebih dulu, jadi "start dari 0 KPH" bukan asumsi, tapi
+   dipaksa (mesin mati → gear N → speed 0 → START ENGINE lagi).
+2. Gear mode dipaksa ke **AUTO** selama run (dikembalikan ke mode
+   sebelumnya begitu run selesai/dibatalkan/direset) — gearbox
+   berpindah sendiri di bawah full throttle, persis seperti driver yang
+   membejek gas penuh dan membiarkan transmisi otomatis menaikkan gigi
+   ( `stepGear()` di `engine-state.js`, tidak ada logic shifting baru).
+3. Throttle langsung dikomando ke 100% begitu mesin start —
+   `START_FLARE_CANCEL_THROTTLE` di `rpm-simulator.js` otomatis
+   membatalkan flare start-up begitu ada input gas sungguhan, jadi RPM
+   langsung menanjak lewat kurva akselerasi normal alih-alih blip idle.
+4. Elapsed time mulai persis di saat throttle 100% itu dikomando
+   (setara momen "lepas rem/kopling") dan berhenti otomatis begitu
+   semua split yang berlaku tercapai, kendaraan mentok top speed
+   (governor VEHICLE SETUP) selama >1.5 detik tanpa mencapai split
+   berikutnya (ditandai **TIDAK TERCAPAI**), atau tombol **STOP**
+   ditekan.
+
+**RESET** mengembalikan run ke kondisi awal (mesin mati, ladder
+dikosongkan) sekaligus mereset simulasi utama, sama seperti
+PERFORMANCE MODE.
+
+Modul ini tidak memiliki simulasi fisika sendiri — seluruhnya membaca
+`EngineState.subscribe()` dan mengorkestrasi API publik yang sudah ada
+(`resetSimulation`, `setGearMode`, `startEngine`, `setThrottle`), lalu
+menginterpolasi speed antar-frame untuk menentukan waktu split secara
+presisi.
+
+## TELEMETRY PANEL (`telemetry-panel.js`)
+
+Panel baru — tombol **TELEMETRY PANEL** (di bawah ACCELERATION MODE)
+membuka modal berisi dua bagian:
+
+**Data realtime** (9 readout, semua dari snapshot `EngineState` per
+frame, tidak ada yang dihitung ulang di modul ini): SPEED (ikut satuan
+KM/H⇄MPH kokpit), RPM, GEAR, THROTTLE, TORQUE, POWER, BOOST,
+TEMPERATURE, **ENGINE LOAD** (persentase pemakaian kurva torsi saat
+ini — reuse langsung dari blend throttle→idle-load-floor yang sudah
+dipakai PERFORMANCE MODE untuk torque/power, sekarang juga diekspos
+sebagai `state.engineLoadPercent`).
+
+**Event log**, dengan tombol **CLEAR LOG**:
+
+- `ENGINE START` — edge saat `state.engineOn` false → true
+- `GEAR SHIFT` — edge saat `state.gearShiftEventId` berubah (counter yang
+  sama dipakai AudioEngine untuk suara shift; otomatis TIDAK
+  menghitung pengait N→1 saat start dari diam)
+- `REDLINE` — edge saat `state.inRedline` false → true
+- `LIMITER` — edge saat `state.revLimiting` false → true (bisa muncul
+  berkali-kali cepat kalau ditahan di limiter — itu memang perilaku
+  limiter yang mantul, bukan log dobel)
+- `OVERHEAT` — edge saat `state.engineTempC` melewati ambang 88°C
+  (mendekati langit-langit 92°C model termal `engine-state.js`, jadi
+  hanya tercapai lewat RPM tinggi yang benar-benar dipertahankan)
+- `TOP SPEED` — edge saat `state.speedKmh` mencapai governor Top Speed
+  (VEHICLE SETUP) saat ini
+- `ENGINE STOP` — edge saat `state.engineOn` true → false
+
+Semua deteksi berjalan dari `EngineState.subscribe()` **setiap frame**,
+terlepas dari panel ini sedang terbuka atau tidak — jadi event yang
+terjadi sebelum panel dibuka tetap tercatat begitu panel dibuka
+(sama seperti system log kokpit). Tidak ada `Math.random()` dan tidak
+ada event yang dipicu langsung oleh tombol UI — semuanya murni deteksi
+perubahan state simulasi.
+
 ## Tahap berikutnya (belum dikerjakan)
 
 - Model termal yang lebih realistis di `engine-state.js` (gear ratio /

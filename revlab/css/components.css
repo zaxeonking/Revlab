@@ -1044,6 +1044,176 @@
   color: var(--bg-0);
 }
 
+/* ---------- ACCELERATION MODE trigger button ---------- */
+.btn--accel {
+  margin-top: var(--sp-2);
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-4);
+  width: 100%;
+}
+
+.btn--accel:hover {
+  background: var(--accent-red);
+  color: var(--bg-0);
+}
+
+/* ---------- ACCELERATION MODE ladder ---------- */
+.accel-ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-3);
+}
+
+.accel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.accel-row[data-state="done"] {
+  border-color: var(--accent-ok);
+}
+
+.accel-row[data-state="pending"] {
+  border-color: var(--accent-amber);
+}
+
+.accel-row[data-state="missed"] {
+  border-color: var(--accent-red);
+}
+
+.accel-row__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+}
+
+.accel-row__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-0);
+}
+
+.accel-row__value[data-state="done"] {
+  color: var(--accent-ok);
+}
+
+.accel-row__value[data-state="pending"] {
+  color: var(--accent-amber);
+}
+
+.accel-row__value[data-state="missed"] {
+  color: var(--accent-red);
+  font-size: var(--fs-xs);
+}
+
+/* ---------- TELEMETRY PANEL trigger button ---------- */
+.btn--telemetry {
+  margin-top: var(--sp-2);
+  border-color: var(--accent-ok);
+  color: var(--accent-ok);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-4);
+  width: 100%;
+}
+
+.btn--telemetry:hover {
+  background: var(--accent-ok);
+  color: var(--bg-0);
+}
+
+.btn--small {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+}
+
+/* ---------- TELEMETRY PANEL event log ---------- */
+.telemetry-events {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.telemetry-events__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.telemetry-log {
+  background: var(--bg-recess);
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  height: 220px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.telemetry-log__empty {
+  color: var(--text-2);
+  padding: var(--sp-2) 0;
+}
+
+.telemetry-log__row {
+  display: grid;
+  grid-template-columns: 64px 96px 1fr;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: 3px 0;
+  color: var(--text-1);
+}
+
+.telemetry-log__row + .telemetry-log__row {
+  border-top: 1px dashed var(--border-0);
+}
+
+.telemetry-log__time {
+  color: var(--text-2);
+}
+
+.telemetry-log__tag {
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+}
+
+.telemetry-log__row[data-tone="ok"] .telemetry-log__tag {
+  color: var(--accent-ok);
+}
+
+.telemetry-log__row[data-tone="cyan"] .telemetry-log__tag {
+  color: var(--accent-cyan);
+}
+
+.telemetry-log__row[data-tone="amber"] .telemetry-log__tag {
+  color: var(--accent-amber);
+}
+
+.telemetry-log__row[data-tone="red"] .telemetry-log__tag {
+  color: var(--accent-red);
+}
+
+.telemetry-log__row[data-tone="neutral"] .telemetry-log__tag {
+  color: var(--text-2);
+}
+
+.telemetry-log__msg {
+  color: var(--text-1);
+  white-space: normal;
+  word-break: break-word;
+}
+
 /* ---------- PERFORMANCE MODE panel ---------- */
 .modal--wide {
   width: min(920px, 100%);

@@ -39,6 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   UIController.init(gauge, speedGauge, boostGauge);
   PerformanceMode.init();
+  AccelerationMode.init();
+  TelemetryPanel.init();
 
   console.info('[REVLAB] Cockpit UI loaded. RPMSimulator running (rAF loop, deterministic physics).');
   console.info('[VehicleSetup] current parameters:', VehicleSetup.getAll());
