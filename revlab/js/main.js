@@ -35,7 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
     kmhPerMph: EngineState.KMH_PER_MPH,
   });
 
-  UIController.init(gauge, speedGauge);
+  const boostGauge = BoostGauge.init();
+
+  UIController.init(gauge, speedGauge, boostGauge);
   PerformanceMode.init();
 
   console.info('[REVLAB] Cockpit UI loaded. RPMSimulator running (rAF loop, deterministic physics).');

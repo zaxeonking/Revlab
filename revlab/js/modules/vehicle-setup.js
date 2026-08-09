@@ -38,6 +38,28 @@
  */
 
 const VehicleSetup = (() => {
+  // ---- Engine configuration: induction type (enum, not a numeric PARAMS
+  // entry — the min/max/step model above doesn't fit a category choice).
+  // This is the "engine configuration" ENGINE-STATE's turbo/boost model
+  // reads (js/modules/engine-state.js, stepBoost()) alongside turboSize/
+  // maxBoostBar below, to decide HOW boost responds to throttle + RPM:
+  //   na    — no forced induction, boost always 0.
+  //   turbo — single turbo: boost needs both throttle AND RPM (exhaust
+  //           flow) to build, with spool lag governed by turboSize.
+  //   twin  — twin-turbo: same demand model as 'turbo' but smaller
+  //           turbines spool noticeably faster (less lag) at the same
+  //           turboSize setting.
+  //   super — supercharger: mechanically (belt) driven off the crank, so
+  //           it tracks RPM almost immediately — no exhaust-flow spool
+  //           lag the way a turbo has.
+  const INDUCTION_TYPES = [
+    { value: 'na', label: 'NATURALLY ASPIRATED' },
+    { value: 'turbo', label: 'SINGLE TURBO' },
+    { value: 'twin', label: 'TWIN-TURBO' },
+    { value: 'super', label: 'SUPERCHARGER' },
+  ];
+  const DEFAULT_INDUCTION_TYPE = 'turbo';
+
   // ---- Parameter specs (single source of truth for the form + validation) ----
   // decimals controls both step rounding and how the UI formats the value.
   const PARAMS = {
@@ -77,6 +99,16 @@ const VehicleSetup = (() => {
       label: 'TOP SPEED', unit: 'KM/H', group: 'engine',
       min: 80, max: 400, step: 5, decimals: 0, default: 260,
     },
+    turboSize: {
+      label: 'TURBO SIZE', unit: '%', group: 'engine',
+      min: 0, max: 100, step: 1, decimals: 0, default: 55,
+      hint: 'Kecil = spool cepat, boost lebih rendah. Besar = spool lambat (turbo lag), boost lebih tinggi.',
+    },
+    maxBoostBar: {
+      label: 'MAX BOOST', unit: 'BAR', group: 'engine',
+      min: 0.0, max: 2.5, step: 0.05, decimals: 2, default: 0.90,
+      hint: 'Batas atas tekanan boost saat forced induction terpasang penuh.',
+    },
     finalDrive: {
       label: 'FINAL DRIVE', unit: ': 1', group: 'drivetrain',
       min: 2.0, max: 6.0, step: 0.01, decimals: 3, default: 3.900,
@@ -112,6 +144,7 @@ const VehicleSetup = (() => {
     values = {};
     Object.keys(PARAMS).forEach((key) => { values[key] = PARAMS[key].default; });
     values.gearRatios = GEAR_RATIO_SPEC.defaults.slice();
+    values.inductionType = DEFAULT_INDUCTION_TYPE;
   }
 
   const listeners = new Set();
@@ -224,6 +257,25 @@ const VehicleSetup = (() => {
     return result;
   }
 
+  /** Validates + stores the induction-type enum (engine configuration).
+   *  Same "reapply whole setup to EngineState" flow as set()/
+   *  setGearRatio() above, just without a min/max clamp since this is a
+   *  category choice, not a number. */
+  function setInductionType(rawValue) {
+    const match = INDUCTION_TYPES.find((t) => t.value === rawValue);
+    if (!match) {
+      return { ok: false, value: values.inductionType, message: 'Tipe induksi tidak dikenal.' };
+    }
+    values.inductionType = match.value;
+    applyToSimulation();
+    notify({ reason: 'setInductionType' });
+    return { ok: true, value: values.inductionType, message: '' };
+  }
+
+  function getInductionTypes() {
+    return INDUCTION_TYPES.slice();
+  }
+
   function get(key) {
     return values[key];
   }
@@ -277,6 +329,8 @@ const VehicleSetup = (() => {
     getAll,
     set,
     setGearRatio,
+    setInductionType,
+    getInductionTypes,
     reset,
     getSpec,
     getGearRatioSpec,

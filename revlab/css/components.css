@@ -348,6 +348,75 @@
   padding: 2px 6px;
 }
 
+/* ---------- Boost gauge (compact, lives in the TELEMETRY panel) --------
+   Same SVG construction/classes as the RPM & speed gauges (.gauge,
+   .gauge__bezel, .gauge__tick, .gauge__needle-group, etc. — see
+   js/modules/boost-gauge.js), just sized down to sit under the
+   BOOST/PRESSURE readout instead of in the hero instrument pod. */
+.gauge-wrap--boost {
+  width: min(100%, 170px);
+  margin: var(--sp-3) auto 0;
+}
+
+.gauge__redline-arc--boost {
+  /* Reuses .gauge__redline-arc's amber "zone" styling as-is — this
+     modifier exists so the boost-zone arc is addressable/tunable
+     separately from the RPM redline arc without duplicating the base
+     rule, even though at default both render identically. */
+  stroke-width: 5;
+}
+
+.gauge__readout--boost {
+  bottom: 20%;
+}
+
+.gauge__rpm-value--boost {
+  font-size: var(--fs-lg);
+}
+
+/* ---------- Turbo spool indicator (under the boost gauge) --------------
+   Same track/fill construction as .throttle-indicator above, just
+   vertically stacked with a label instead of inline — shows
+   EngineState's turboSpoolFraction (turbine/rotor inertia), which is
+   deliberately a SEPARATE reading from the boost needle itself: spool
+   can stay high for a moment after a blow-off vents the actual boost
+   pressure, and this bar is what makes that lag visible. */
+.turbo-spool-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  width: 100%;
+}
+
+.turbo-spool-indicator__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.turbo-spool-indicator__track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-recess);
+  border: 1px solid var(--border-0);
+  overflow: hidden;
+}
+
+.turbo-spool-indicator__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-cyan-dim), var(--accent-amber));
+  /* No CSS transition, same reasoning as .throttle-indicator__fill —
+     EngineState already smooths spoolFraction itself every physics
+     tick (spool inertia), so a CSS transition here would double the
+     lag on top of the real physics. */
+}
+
 .redline-indicator--paired .redline-indicator__label,
 .speed-warning-indicator--paired .redline-indicator__label {
   font-size: 7px;
@@ -1247,6 +1316,22 @@
   font-size: 9px;
   min-height: 11px;
   line-height: 1.3;
+}
+
+.setup-field__select {
+  background: var(--bg-recess);
+  border: 1px solid var(--border-1);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.setup-field__select:focus-visible {
+  border-color: var(--accent-cyan);
 }
 
 .setup-field__msg[data-state="clamped"] {

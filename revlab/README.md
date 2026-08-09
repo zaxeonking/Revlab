@@ -75,7 +75,9 @@ revlab/
 | **Gearbox / drivetrain math**      | ✅ **gear ratio × final drive × keliling roda × efisiensi — lihat di bawah** |
 | **Kontrol gear (keyboard)**        | ✅ **Shift = up, Ctrl = down — otomatis pindah ke MANUAL** |
 | **VEHICLE SETUP (12 parameter)**   | ✅ **memengaruhi simulasi langsung, validasi min/max, RESET SETUP — lihat di bawah** |
-| Audio engine (Web Audio API)       | 🔲 belum diimplementasikan — hanya stub          |
+| Audio engine (Web Audio API)       | ✅ 9 layer sintesis: low/mid/high tone, intake, exhaust, turbo spool, blow-off, gear shift, rev limiter — lihat di bawah |
+| Turbo boost simulation             | ✅ spool + boost pressure fisik nyata, dipengaruhi throttle + RPM + engine configuration — lihat di bawah |
+| Boost gauge (radial)               | ✅ dial SVG terpisah untuk BOOST/PRESSURE, plus indikator SPOOL — lihat di bawah |
 
 ## Simulasi RPM (`rpm-simulator.js`)
 
@@ -279,6 +281,81 @@ TELEMETRY.
   hero instrument, digambar dengan SVG murni (bukan gambar statis) agar
   siap dianimasikan saat data RPM sungguhan tersedia.
 
+## TURBO / BOOST simulation (`engine-state.js` — `stepBoost`)
+
+Boost bukan lagi rumus satu baris dari throttle saja — sekarang jadi
+simulasi fisik kecilnya sendiri, mengikuti pola "approach target dengan
+laju terbatas" yang sama dipakai RPMSimulator dan smoothing speed,
+supaya deterministik (tanpa `Math.random()`) dan tidak tergantung frame
+rate (dijalankan lewat `dtSeconds`).
+
+Dua besaran terpisah, sengaja:
+
+- **`spoolFraction`** (0..1) — seberapa "berputar" turbin/rotor saat ini.
+  Ini adalah INERSIA turbin/rotor: tetap bertahan sesaat walau kaki
+  sudah lepas dari gas, persis seperti turbo sungguhan yang masih
+  berputar sebentar setelah throttle ditutup.
+- **`boostBar`** — tekanan manifold aktualnya sekarang. Di-gate oleh
+  THROTTLE di atas `spoolFraction`: melepas gas membuang tekanan yang
+  sudah terkumpul hampir seketika (wastegate/blow-off valve terbuka)
+  walau turbin masih berputar kencang — inilah yang menghasilkan momen
+  klasik blow-off ("masih berputar, tapi boost langsung jatuh").
+
+**ENGINE CONFIGURATION** (VEHICLE SETUP) mengubah TIGA hal di model ini:
+
+| Field | Efek |
+|---|---|
+| **Induction Type** (NA / Single Turbo / Twin-Turbo / Supercharger) | NA tidak pernah membangun boost sama sekali. Turbo/twin butuh THROTTLE *dan* RPM (aliran gas buang) untuk spool — throttle penuh di RPM rendah tetap spool lambat (turbo lag klasik). Twin-turbo spool lebih cepat dari single turbo di ukuran yang sama (turbin lebih kecil). Supercharger digerakkan mekanis dari crank lewat belt, jadi mengikuti RPM hampir seketika — nyaris tanpa lag aliran gas buang. |
+| **Turbo Size** (0–100%) | Turbo besar spool lebih lambat (lag lebih terasa) tapi cocok untuk boost tinggi; turbo kecil spool cepat. Hanya memengaruhi LAJU spool, bukan batas atas boost. |
+| **Max Boost** (0–2.5 bar) | Batas atas tekanan boost yang bisa dicapai `spoolFraction × throttleGate` di atas. |
+
+Blow-off terdeteksi lewat `triggerBlowOffIfNeeded()`: throttle turun
+tajam (≥18% dalam satu frame) sementara boost masih berarti (≥0.15 bar)
+memicu satu event (`blowOffEventId` bertambah, bukan re-trigger tiap
+frame — ada cooldown 350ms). Hanya berlaku untuk turbo/twin — supercharger
+tidak punya blow-off valve dalam pengertian yang sama.
+
+## AUDIO ENGINE — 9 layer (`audio-engine.js`)
+
+Web Audio API murni, tanpa sample (kecuali user memuat sample sendiri
+lewat SOUND LAB — lihat di bawah). Setiap `AudioNode` dibuat TEPAT SEKALI
+di dalam `init()`; `update()`, yang dipanggil setiap frame simulasi, HANYA
+memanggil `.setTargetAtTime()` pada `AudioParam` yang sudah ada — tidak
+ada node yang pernah dibuat, disambungkan, atau di-`start()` di dalam
+`update()`, dan tidak ada node baru per event (blow-off/gear-shift) —
+keduanya memakai node persisten yang di-envelope ulang lewat
+`setValueAtTime`/`linearRampToValueAtTime`/`exponentialRampToValueAtTime`.
+
+1. **ENGINE LOW** — rumble sub-bass (dua oscillator square wave)
+2. **ENGINE MID** — tone/body utama (sawtooth)
+3. **ENGINE HIGH** — snarl atas yang tumbuh bersama RPM
+4. **INTAKE** — noise terfilter, didominasi THROTTLE (induction roar)
+5. **EXHAUST** — noise terfilter TERPISAH dari intake, didominasi RPM,
+   register lebih rendah, makin rasp saat boost naik
+6. **TURBO SPOOL** — whine oscillator mengikuti `turboSpoolFraction`
+   (bukan RPM/throttle langsung), diam total untuk induction type NA
+7. **BLOW-OFF** — semburan "pssh" satu kali, node noise+filter+gain
+   PERSISTEN (gain 0 di antara event), dipicu lewat envelope saat
+   `blowOffEventId` dari EngineState berubah
+8. **GEAR SHIFT** — "thunk" mekanis satu kali (oscillator rendah + noise
+   klik terfilter), node persisten yang sama, dipicu lewat envelope saat
+   `gearShiftEventId` berubah
+9. **REV LIMITER** — stutter fuel-cut (LFO memodulasi gain mix bus)
+
+Semua layer membaca frame telemetri EngineState yang SAMA setiap tick
+(atau event-id yang sama untuk layer one-shot), jadi suara selalu murni
+fungsi dari state simulasi saat ini.
+
+## SOUND LAB — kategori TURBO & SHIFT (`sound-lab.js`)
+
+Selain 5 band RPM kontinu (Idle/Low/Mid/High/Limiter), Sound Lab sekarang
+juga punya dua kategori **one-shot** yang bisa diisi sample sendiri:
+**TURBO** (dipicu saat boost naik tajam, terasa seperti blow-off) dan
+**SHIFT** (dipicu setiap kali gigi benar-benar berpindah). Keduanya
+memakai graph Web Audio yang sama-sama dibangun sekali di `loadFile()`
+— memicu one-shot hanya mengulang transport `<audio>` dari 0, tidak
+pernah membangun ulang node.
+
 ## Menghubungkan simulator engine sungguhan
 
 Dua titik ekstensi tersedia, tergantung seberapa dalam simulator baru:
@@ -340,11 +417,11 @@ START ENGINE di kokpit utama (bukan simulasi paralel terpisah):
 
 ## Tahap berikutnya (belum dikerjakan)
 
-- Implementasi `AudioEngine` dengan `AudioContext`, sample/oscillator
-  suara mesin, dan mapping RPM real-time → pitch/gain.
-- Sambungkan suara ke rev limiter (mis. suara "sputter" saat fuel cut).
 - Model termal yang lebih realistis di `engine-state.js` (gear ratio /
-  drivetrain sudah realistis — lihat `gearbox.js`).
+  drivetrain sudah realistis — lihat `gearbox.js`; turbo/boost juga
+  sudah — lihat bagian TURBO / BOOST simulation di atas).
+- Engine profile / cylinder layout (panel POWERTRAIN masih placeholder
+  "— — —") — belum terhubung ke suara atau fisika manapun.
 
 ## VEHICLE SETUP (`vehicle-setup.js`)
 
@@ -371,6 +448,9 @@ setiap perubahan langsung diterapkan ke simulasi — tidak ada tombol
 | **Throttle Response** | 0–100% | Kecepatan ramp pedal gas dari 0→100% (`ThrottleController`) |
 | **Engine Braking** | 0–100% | Kecepatan RPM turun saat throttle dilepas / mesin dimatikan |
 | **Top Speed** | 80–400 km/h | Governor kecepatan (hard cap) + skala dial speedometer |
+| **Induction Type** | NA / Turbo / Twin-Turbo / Supercharger | Model spool + karakter boost — lihat TURBO / BOOST simulation di atas |
+| **Turbo Size** | 0–100% | Laju spool turbo (besar = lebih lambat/lag, kecil = lebih cepat) |
+| **Max Boost** | 0.00–2.50 bar | Batas atas tekanan boost |
 
 Pada nilai default, kalkulasi di atas menghasilkan angka yang **identik**
 dengan konstanta hasil tuning manual sebelumnya (idle 800, redline 7500,

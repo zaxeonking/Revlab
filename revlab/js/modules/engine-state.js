@@ -37,7 +37,10 @@
 const EngineState = (() => {
   const AMBIENT_TEMP_C = 24;
   const OPERATING_TEMP_C = 92;
-  const MAX_BOOST_BAR = 1.4;
+  // `let`, not `const`: VEHICLE SETUP's "MAX BOOST" field can change this
+  // at runtime — see applyVehicleSetup() below. Default mirrors
+  // VehicleSetup's own maxBoostBar default.
+  let MAX_BOOST_BAR = 0.90;
   // Dial ceiling for the speedometer face — kept as a display value (fed
   // to SpeedGauge for its tick scale) that now ALSO acts as a real
   // governor: deriveFromFrame() below caps the driven speed target at
@@ -253,6 +256,162 @@ const EngineState = (() => {
   // only holds if that's true.
   const SHIFT_LOCK_MS = 550;
 
+  // ---- TURBO / BOOST MODEL ----------------------------------------------
+  // Boost is now a small physics simulation of its own, not a one-line
+  // formula off throttle alone — it follows the same "approach a target
+  // at a capped rate" pattern RPMSimulator uses for RPM and the speed
+  // display above use for speed, so it's deterministic (no
+  // Math.random()) and frame-rate independent (driven by dtSeconds).
+  //
+  // Two separate quantities, on purpose:
+  //   spoolFraction  — how "spun up" the turbo/supercharger currently is
+  //                     (0..1). This is turbine/rotor INERTIA: it persists
+  //                     for a moment even after you lift off the throttle,
+  //                     exactly like a real turbo keeps spinning briefly.
+  //   boostBar       — actual manifold pressure right now. Gated by
+  //                     THROTTLE on top of spoolFraction: lifting off the
+  //                     gas vents accumulated pressure near-instantly
+  //                     (wastegate/blow-off valve opening) even while the
+  //                     turbine is still spooled — which is exactly what
+  //                     produces the classic "still spinning, but boost
+  //                     just dumped" blow-off moment, and is what
+  //                     triggerBlowOffIfNeeded() below listens for.
+  //
+  // ENGINE CONFIGURATION (from VEHICLE SETUP) changes THREE things here:
+  //   inductionType — na engines never build boost at all; turbo/twin
+  //                   need RPM (exhaust flow) as well as throttle to
+  //                   spool; twin spools faster than a single turbo of
+  //                   the same size; super (supercharger) is belt-driven
+  //                   off the crank, so it tracks RPM almost immediately
+  //                   with no exhaust-flow lag.
+  //   turboSizeFrac — bigger turbo (closer to 1) spools slower (more lag)
+  //                   in exchange for a higher realistic ceiling; smaller
+  //                   spools fast but is easier to overwhelm. Only
+  //                   affects spool RATE, not the boost ceiling itself —
+  //                   the ceiling is MAX_BOOST_BAR, set independently.
+  //   MAX_BOOST_BAR — the ceiling spoolFraction × throttle gate scales
+  //                   against.
+  const BLOWOFF_THRESHOLD_BAR = 0.15;  // boost has to have been at least this high…
+  const BLOWOFF_THROTTLE_DROP = 0.18;  // …and throttle has to drop at least this much in one frame to count as a lift, not just easing off gently
+  const BLOWOFF_COOLDOWN_MS = 350;     // minimum gap between two blow-off events, so one hard lift can't fire it twice off two consecutive frames
+  let INDUCTION_TYPE = 'turbo';        // 'na' | 'turbo' | 'twin' | 'super'
+  let turboSizeFrac = 0.55;            // 0..1, from VEHICLE SETUP's turboSize (%)
+
+  let spoolFraction = 0;
+  let boostBar = 0;
+  let prevThrottleFracForBoost = 0;
+  let blowOffCooldownUntil = 0;
+  let blowOffEventId = 0;   // incremented once per detected blow-off — AudioEngine edge-detects on this
+  let shiftEventId = 0;     // incremented once per real gear-to-gear shift — AudioEngine edge-detects on this
+
+  function approachClamped(current, target, ratePerSec, dtSeconds) {
+    const maxStep = Math.max(0, ratePerSec) * dtSeconds;
+    if (current < target) return Math.min(target, current + maxStep);
+    if (current > target) return Math.max(target, current - maxStep);
+    return current;
+  }
+
+  /** How hard the turbine/rotor is being asked to spin, 0..1, given
+   *  current throttle + RPM. This is the "demand" spoolFraction chases —
+   *  NOT the boost pressure itself (see comment block above). */
+  function spoolDemand(throttleFraction, rpmFraction) {
+    if (INDUCTION_TYPE === 'na') return 0;
+    if (INDUCTION_TYPE === 'super') {
+      // Belt-driven off the crank: demand tracks RPM directly, throttle
+      // only gates whether the manifold is actually being asked to build
+      // pressure (closed throttle = no load even at high RPM).
+      return clamp(throttleFraction * (0.20 + 0.80 * rpmFraction), 0, 1);
+    }
+    // turbo / twin: needs BOTH throttle (load) and RPM (exhaust gas flow)
+    // — full throttle at low RPM still spools slowly, which is the
+    // classic low-rpm turbo-lag feel this weighting produces.
+    return clamp(throttleFraction * (0.35 + 0.65 * rpmFraction), 0, 1);
+  }
+
+  /** Rate (fraction of full spool per second) spoolFraction is allowed
+   *  to move toward its demand this frame — asymmetric (rising slower
+   *  than falling, same idea as throttle ramp / RPM accel-decel). */
+  function spoolRate(rising) {
+    if (INDUCTION_TYPE === 'super') {
+      // No real exhaust-flow lag — near-instant either direction.
+      return rising ? 9.0 : 9.0;
+    }
+    const sizeDrag = 0.35 + turboSizeFrac; // bigger turbo => smaller denominator below => slower
+    const twinBonus = INDUCTION_TYPE === 'twin' ? 1.6 : 1.0; // smaller individual turbines spool faster
+    const base = rising ? 2.6 : 4.2; // falling (spooling down) is quicker than spooling up
+    return (base * twinBonus) / sizeDrag;
+  }
+
+  /** Advances the turbo/boost model by one physics tick. Pure state
+   *  update (spoolFraction, boostBar, blow-off detection) — mirrors the
+   *  RPM/speed pattern elsewhere in this file: no Math.random(), driven
+   *  only by throttle/RPM/dtSeconds/engine configuration. */
+  function stepBoost(throttleFraction, rpmFraction, dtSeconds, engineOn) {
+    if (!engineOn || INDUCTION_TYPE === 'na') {
+      spoolFraction = approachClamped(spoolFraction, 0, spoolRate(false), dtSeconds);
+      boostBar = 0;
+      prevThrottleFracForBoost = throttleFraction;
+      return;
+    }
+
+    const demand = spoolDemand(throttleFraction, rpmFraction);
+    const rising = demand >= spoolFraction;
+    spoolFraction = approachClamped(spoolFraction, demand, spoolRate(rising), dtSeconds);
+
+    // Throttle gate: manifold pressure needs the throttle plate open to
+    // hold boost — closing it (even with the turbine still spun up)
+    // vents pressure fast, via the wastegate/BOV. Smoothstep so it's not
+    // a hard on/off snap.
+    const gateT = clamp((throttleFraction - 0.10) / 0.35, 0, 1);
+    const throttleGate = gateT * gateT * (3 - 2 * gateT);
+    const targetBoost = spoolFraction * MAX_BOOST_BAR * throttleGate;
+
+    // Boost pressure itself reacts a bit faster than the turbine's own
+    // inertia (it's just gas filling/venting a manifold, not a spinning
+    // mass), especially on the way down — that gap between "boost drops
+    // fast" and "spoolFraction drops slower" is exactly what makes a
+    // blow-off event read as physically real rather than a mute cut.
+    const boostRisePerSec = MAX_BOOST_BAR * 3.2;
+    const boostFallPerSec = MAX_BOOST_BAR * 7.0;
+    boostBar = approachClamped(
+      boostBar,
+      targetBoost,
+      targetBoost >= boostBar ? boostRisePerSec : boostFallPerSec,
+      dtSeconds
+    );
+
+    triggerBlowOffIfNeeded(throttleFraction);
+    prevThrottleFracForBoost = throttleFraction;
+  }
+
+  /** Detects a hard throttle lift while meaningful boost is present and
+   *  fires a one-shot blow-off event (via blowOffEventId — AudioEngine
+   *  watches for this counter changing, same pattern as shiftEventId).
+   *  Superchargers don't have a blow-off valve in the same dramatic
+   *  sense a turbo does, so this only fires for turbo/twin. */
+  function triggerBlowOffIfNeeded(throttleFraction) {
+    if (INDUCTION_TYPE !== 'turbo' && INDUCTION_TYPE !== 'twin') return;
+    const throttleDrop = prevThrottleFracForBoost - throttleFraction;
+    if (
+      boostBar >= BLOWOFF_THRESHOLD_BAR &&
+      throttleDrop >= BLOWOFF_THROTTLE_DROP &&
+      now() >= blowOffCooldownUntil
+    ) {
+      blowOffEventId += 1;
+      blowOffCooldownUntil = now() + BLOWOFF_COOLDOWN_MS;
+    }
+  }
+
+  /** Marks a real gear-to-gear shift for AudioEngine's gear-shift sound
+   *  (edge-detected off shiftEventId, same pattern as blow-off) AND
+   *  triggers RPMSimulator's RPM dip — replaces every direct
+   *  RPMSimulator.triggerShiftDip() call site so the two can never fall
+   *  out of sync (a shift dip without a shift sound, or vice versa). */
+  function signalShiftEvent() {
+    shiftEventId += 1;
+    RPMSimulator.triggerShiftDip();
+  }
+
   let state = {
     status: 'off',        // 'off' | 'idle' | 'running' | 'redline'
     engineOn: false,
@@ -268,6 +427,11 @@ const EngineState = (() => {
     speedKmh: 0,
     engineTempC: AMBIENT_TEMP_C,
     boostBar: 0,
+    maxBoostBar: MAX_BOOST_BAR,
+    turboSpoolFraction: 0,
+    inductionType: INDUCTION_TYPE,
+    blowOffEventId: 0,
+    gearShiftEventId: 0,
     inRedline: false,
     revLimiting: false,
     maxRpmK: MAX_RPM / 1000,
@@ -375,7 +539,7 @@ const EngineState = (() => {
         // 1st→2nd shift and up.
       } else {
         engageShiftLock();
-        RPMSimulator.triggerShiftDip();
+        signalShiftEvent();
       }
       return;
     }
@@ -384,7 +548,7 @@ const EngineState = (() => {
       gearIndex -= 1;
       engageShiftLock();
       RPMSimulator.setGear(gearIndex);
-      RPMSimulator.triggerShiftDip();
+      signalShiftEvent();
       return;
     }
 
@@ -504,6 +668,16 @@ const EngineState = (() => {
     const dtSeconds = lastSpeedTs === null ? 0 : Math.min((nowTs - lastSpeedTs) / 1000, 0.1);
     lastSpeedTs = nowTs;
 
+    // ---- TURBO / BOOST — see stepBoost() above for the full model.
+    // Same dtSeconds this tick's speed smoothing uses, so boost and
+    // speed advance against the exact same slice of real time.
+    stepBoost(frame.throttlePercent / 100, rpmFraction, dtSeconds, frame.engineOn);
+    state.boostBar = Math.round(boostBar * 100) / 100;
+    state.turboSpoolFraction = Math.round(spoolFraction * 1000) / 1000;
+    state.inductionType = INDUCTION_TYPE;
+    state.blowOffEventId = blowOffEventId;
+    state.gearShiftEventId = shiftEventId;
+
     if (!frame.engineOn || gearIndex === 0) {
       // No drivetrain connection at all — either ignition off, or the
       // gearbox is in neutral. Snap straight to 0 rather than smoothing
@@ -520,9 +694,6 @@ const EngineState = (() => {
       displaySpeedKmh = approachSpeed(displaySpeedKmh, targetSpeedKmh, dtSeconds);
     }
     state.speedKmh = Math.round(displaySpeedKmh);
-    state.boostBar = frame.engineOn
-      ? Math.round(Math.max(0, frame.throttlePercent / 100 - 0.15) * MAX_BOOST_BAR * 100) / 100
-      : 0;
     state.engineTempC = frame.engineOn
       ? Math.round(AMBIENT_TEMP_C + rpmFraction * (OPERATING_TEMP_C - AMBIENT_TEMP_C))
       : AMBIENT_TEMP_C;
@@ -581,6 +752,10 @@ const EngineState = (() => {
     shiftLockUntil = 0;
     displaySpeedKmh = 0;
     lastSpeedTs = null;
+    spoolFraction = 0;
+    boostBar = 0;
+    prevThrottleFracForBoost = 0;
+    blowOffCooldownUntil = 0;
     state = {
       ...state,
       status: 'off',
@@ -597,6 +772,7 @@ const EngineState = (() => {
       speedKmh: 0,
       engineTempC: AMBIENT_TEMP_C,
       boostBar: 0,
+      turboSpoolFraction: 0,
       inRedline: false,
       revLimiting: false,
       torqueNm: 0,
@@ -635,7 +811,7 @@ const EngineState = (() => {
     gearIndex += 1;
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
-    RPMSimulator.triggerShiftDip();
+    signalShiftEvent();
     return getState();
   }
 
@@ -649,7 +825,7 @@ const EngineState = (() => {
     gearIndex -= 1;
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
-    RPMSimulator.triggerShiftDip();
+    signalShiftEvent();
     return getState();
   }
 
@@ -683,6 +859,11 @@ const EngineState = (() => {
     MAX_RPM = setup.maxRpm;
     MAX_SPEED_KMH = setup.topSpeedKmh;
     peakTorqueNm = setup.torqueNm;
+
+    // ---- Engine configuration → turbo/boost model (see stepBoost() above) --
+    INDUCTION_TYPE = setup.inductionType || 'na';
+    turboSizeFrac = clamp((setup.turboSize ?? 55) / 100, 0, 1);
+    MAX_BOOST_BAR = Math.max(0, setup.maxBoostBar ?? 0);
 
     const built = buildGears(IDLE_RPM, REDLINE_RPM, MAX_RPM);
     GEARS = built.gears;
@@ -747,6 +928,8 @@ const EngineState = (() => {
     state.maxRpmK = MAX_RPM / 1000;
     state.redlineStartK = REDLINE_RPM / 1000;
     state.maxSpeedKmh = MAX_SPEED_KMH;
+    state.maxBoostBar = MAX_BOOST_BAR;
+    state.inductionType = INDUCTION_TYPE;
 
     notify();
     return getState();

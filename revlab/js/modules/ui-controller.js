@@ -15,6 +15,7 @@ const UIController = (() => {
   let els = {};
   let gaugeRef = null;
   let speedGaugeRef = null;
+  let boostGaugeRef = null;
 
   function cacheEls() {
     els = {
@@ -46,6 +47,8 @@ const UIController = (() => {
       speedUnitToggle: document.getElementById('speedUnitToggle'),
       tempReadout: document.getElementById('tempReadout'),
       boostReadout: document.getElementById('boostReadout'),
+      boostGaugeValue: document.getElementById('boostGaugeValue'),
+      turboSpoolFill: document.getElementById('turboSpoolFill'),
 
       gearModeToggle: document.getElementById('gearModeToggle'),
       shiftUpBtn: document.getElementById('shiftUpBtn'),
@@ -71,6 +74,8 @@ const UIController = (() => {
       vehicleSetupDoneBtn: document.getElementById('vehicleSetupDoneBtn'),
       vehicleSetupResetBtn: document.getElementById('vehicleSetupResetBtn'),
       vehicleSetupEngineGrid: document.getElementById('vehicleSetupEngineGrid'),
+      vehicleSetupInductionSelect: document.getElementById('setup-inductionType'),
+      vehicleSetupInductionMsg: document.getElementById('setup-inductionType-msg'),
       vehicleSetupDrivetrainGrid: document.getElementById('vehicleSetupDrivetrainGrid'),
       vehicleSetupGearRatios: document.getElementById('vehicleSetupGearRatios'),
 
@@ -148,6 +153,7 @@ const UIController = (() => {
   let lastMaxRpmK = null;
   let lastRedlineStartK = null;
   let lastMaxSpeedKmh = null;
+  let lastMaxBoostBar = null;
 
   function syncGaugeScales(state) {
     if (gaugeRef && gaugeRef.reconfigure
@@ -159,6 +165,10 @@ const UIController = (() => {
     if (speedGaugeRef && speedGaugeRef.reconfigure && state.maxSpeedKmh !== lastMaxSpeedKmh) {
       speedGaugeRef.reconfigure(state.maxSpeedKmh);
       lastMaxSpeedKmh = state.maxSpeedKmh;
+    }
+    if (boostGaugeRef && boostGaugeRef.reconfigure && state.maxBoostBar !== lastMaxBoostBar) {
+      boostGaugeRef.reconfigure(state.maxBoostBar);
+      lastMaxBoostBar = state.maxBoostBar;
     }
   }
 
@@ -325,6 +335,17 @@ const UIController = (() => {
     }
     if (els.boostReadout) {
       els.boostReadout.innerHTML = `${state.boostBar.toFixed(2)} <small>BAR</small>`;
+    }
+    if (boostGaugeRef) boostGaugeRef.setValueBar(state.boostBar);
+    if (els.boostGaugeValue) els.boostGaugeValue.textContent = state.boostBar.toFixed(2);
+    if (els.turboSpoolFill) {
+      // Supercharger/turbo/twin all report a real spoolFraction; naturally
+      // aspirated engines report 0 (EngineState forces it there) — the
+      // bar just reads empty for NA rather than needing a special case
+      // here, same "read whatever the sim already computed" principle
+      // every other readout in this file follows.
+      const spoolPct = Math.round(Math.max(0, Math.min(1, state.turboSpoolFraction || 0)) * 100);
+      els.turboSpoolFill.style.width = `${spoolPct}%`;
     }
 
     if (els.gaugeCaption) {
@@ -543,6 +564,32 @@ const UIController = (() => {
     els.vehicleSetupDrivetrainGrid.innerHTML = '';
     els.vehicleSetupGearRatios.innerHTML = '';
 
+    // ---- ENGINE CONFIGURATION — induction type (enum, not a numeric
+    // PARAMS entry, so it's built here by hand rather than through
+    // buildSetupFieldNode()/VehicleSetup.getParamKeys() below). Options
+    // come straight from VehicleSetup.getInductionTypes() so this select
+    // can never list a value VehicleSetup itself doesn't recognize. ----
+    if (els.vehicleSetupInductionSelect) {
+      els.vehicleSetupInductionSelect.innerHTML = '';
+      VehicleSetup.getInductionTypes().forEach((type) => {
+        const option = document.createElement('option');
+        option.value = type.value;
+        option.textContent = type.label;
+        els.vehicleSetupInductionSelect.appendChild(option);
+      });
+      els.vehicleSetupInductionSelect.addEventListener('change', () => {
+        const result = VehicleSetup.setInductionType(els.vehicleSetupInductionSelect.value);
+        if (els.vehicleSetupInductionMsg) {
+          els.vehicleSetupInductionMsg.textContent = result.message || '';
+          els.vehicleSetupInductionMsg.dataset.state = result.ok ? 'ok' : 'clamped';
+        }
+        if (result.ok) {
+          const label = VehicleSetup.getInductionTypes().find((t) => t.value === result.value);
+          logLine(`VEHICLE SETUP — INDUCTION TYPE → ${label ? label.label : result.value}.`);
+        }
+      });
+    }
+
     VehicleSetup.getParamKeys().forEach((key) => {
       const spec = VehicleSetup.getSpec(key);
       const inputId = `setup-${key}`;
@@ -600,6 +647,13 @@ const UIController = (() => {
    *  what's actually applied to the simulation. Clears any stale
    *  validation messages too. */
   function renderVehicleSetupValues(values) {
+    if (els.vehicleSetupInductionSelect && document.activeElement !== els.vehicleSetupInductionSelect) {
+      els.vehicleSetupInductionSelect.value = values.inductionType;
+    }
+    if (els.vehicleSetupInductionMsg) {
+      els.vehicleSetupInductionMsg.textContent = '';
+      els.vehicleSetupInductionMsg.dataset.state = '';
+    }
     VehicleSetup.getParamKeys().forEach((key) => {
       const spec = VehicleSetup.getSpec(key);
       const input = setupInputEls[key];
@@ -925,9 +979,10 @@ const UIController = (() => {
     });
   }
 
-  function init(gauge, speedGauge) {
+  function init(gauge, speedGauge, boostGauge) {
     gaugeRef = gauge;
     speedGaugeRef = speedGauge;
+    boostGaugeRef = boostGauge;
     cacheEls();
     buildShiftLights();
     renderGearboxSpec();

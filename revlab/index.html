@@ -229,6 +229,37 @@
           </li>
         </ul>
 
+        <!-- BOOST GAUGE — compact radial dial, same SVG construction as
+             the RPM/speed gauges (see js/modules/boost-gauge.js), driven
+             every frame by EngineState's turbo/boost model
+             (js/modules/engine-state.js, stepBoost()). Scale is
+             0..maxBoostBar (VEHICLE SETUP's "MAX BOOST" field), with an
+             amber "boost zone" arc near the top like the tachometer's
+             redline. -->
+        <div class="gauge-wrap gauge-wrap--boost">
+          <svg id="boostGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="Boost gauge, 0 bar">
+            <circle class="gauge__bezel" cx="150" cy="150" r="142" />
+            <g id="boostGaugeTicks"></g>
+            <path id="boostGaugeZone" class="gauge__redline-arc gauge__redline-arc--boost" d="" />
+            <g id="boostGaugeNeedle" class="gauge__needle-group">
+              <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
+              <circle cx="150" cy="150" r="9" class="gauge__hub" />
+            </g>
+          </svg>
+
+          <div class="gauge__readout gauge__readout--boost">
+            <span class="gauge__rpm-value gauge__rpm-value--boost" id="boostGaugeValue">0.00</span>
+            <span class="gauge__rpm-unit" id="boostGaugeUnit">BAR</span>
+          </div>
+
+          <div class="turbo-spool-indicator" id="turboSpoolIndicator" aria-hidden="true">
+            <span class="turbo-spool-indicator__label">SPOOL</span>
+            <div class="turbo-spool-indicator__track">
+              <div class="turbo-spool-indicator__fill" id="turboSpoolFill"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="gear-controls" id="gearControls">
           <div class="gear-controls__mode">
             <span class="field__label">GEAR MODE</span>
@@ -377,6 +408,16 @@
         </div>
 
         <div class="modal__body">
+          <section class="setup-group">
+            <h3 class="setup-group__title">ENGINE CONFIGURATION</h3>
+            <div class="setup-field" id="vehicleSetupInductionField">
+              <label class="setup-field__label" for="setup-inductionType">INDUCTION TYPE</label>
+              <select id="setup-inductionType" class="field__select setup-field__select"></select>
+              <p class="field__hint">Menentukan bagaimana boost merespons throttle + RPM — lihat TURBO SIZE &amp; MAX BOOST di bawah.</p>
+              <p class="setup-field__msg" id="setup-inductionType-msg" aria-live="polite"></p>
+            </div>
+          </section>
+
           <section class="setup-group">
             <h3 class="setup-group__title">ENGINE &amp; PERFORMANCE</h3>
             <div class="setup-grid" id="vehicleSetupEngineGrid"></div>
@@ -527,6 +568,7 @@
 
   <script src="js/modules/gauge.js"></script>
   <script src="js/modules/speed-gauge.js"></script>
+  <script src="js/modules/boost-gauge.js"></script>
   <script src="js/modules/rpm-simulator.js"></script>
   <script src="js/modules/gearbox.js"></script>
   <script src="js/modules/engine-state.js"></script>
