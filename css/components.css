@@ -240,29 +240,40 @@
   max-width: 32ch;
 }
 
-/* ---------- Compact secondary tachometer (POWERTRAIN panel) ----------
-   Same gauge/needle/tick classes as the hero speedometer — this is a
-   pure size + density override, not a different visual language, so
-   the two instruments still read as one family. */
-.gauge-wrap--compact {
-  width: min(100%, 150px);
+/* ---------- Paired gauges (speedometer + tachometer, side by side) ----
+   Speedometer and tachometer now live in the same panel at the same
+   size and share these "--paired" modifiers — one shared visual
+   language applied identically to both instruments, rather than one
+   hero gauge + one shrunken secondary gauge. */
+.gauge-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+}
+
+.gauge-wrap--paired {
+  width: min(42vw, 190px);
   margin: 0 auto;
 }
 
-.gauge__readout--compact {
+.gauge__readout--paired {
   bottom: 18%;
 }
 
-.gauge__rpm-value--compact {
+.gauge__rpm-value--paired {
   font-size: var(--fs-lg);
 }
 
-.redline-indicator--compact {
+.redline-indicator--paired,
+.speed-warning-indicator--paired {
   top: 10%;
   padding: 2px var(--sp-2);
 }
 
-.redline-indicator--compact .redline-indicator__label {
+.redline-indicator--paired .redline-indicator__label,
+.speed-warning-indicator--paired .redline-indicator__label {
   font-size: 8px;
 }
 

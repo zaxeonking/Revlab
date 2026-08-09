@@ -63,17 +63,51 @@
           <span class="field__label">REDLINE</span>
           <div class="field__value field__value--mono">— — — <small>RPM</small></div>
         </div>
+      </section>
 
-        <!-- SECONDARY: RPM TACHOMETER -->
-        <!-- Moved out of the hero position now that SPEED is the primary
-             readout (see panel--gauge below) — RPM is still real,
-             simulation-driven data, just presented as secondary engine
-             telemetry here rather than the main instrument. Same ids as
-             before (gauge.js is id-based, not position-based), just a
-             smaller "--compact" gauge-wrap. -->
-        <div class="field">
-          <span class="field__label">TACHOMETER</span>
-          <div class="gauge-wrap gauge-wrap--compact">
+      <!-- CENTER: HERO — SPEEDOMETER + TACHOMETER, side by side -->
+      <!-- Both instruments now sit in the same panel, at the same size,
+           sharing the same "--paired" modifier classes for wrap/readout/
+           indicator — one shared visual language instead of one hero +
+           one shrunken secondary gauge. RPM is still driven by
+           RPMSimulator / rendered by gauge.js exactly as before; only
+           placement + styling moved. -->
+      <section class="panel panel--gauge" aria-label="Speedometer and tachometer">
+        <div class="gauge-pair">
+          <div class="gauge-wrap gauge-wrap--paired">
+            <svg id="speedGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="Speedometer, 0">
+              <!-- Outer bezel -->
+              <circle class="gauge__bezel" cx="150" cy="150" r="142" />
+
+              <!-- Tick arc groups injected by speed-gauge.js -->
+              <g id="speedGaugeTicks"></g>
+
+              <!-- Warning/red zone arc near top speed -->
+              <path id="speedGaugeWarnArc" class="gauge__warn-arc" d="" />
+
+              <!-- Needle -->
+              <g id="speedGaugeNeedle" class="gauge__needle-group">
+                <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
+                <circle cx="150" cy="150" r="9" class="gauge__hub" />
+              </g>
+            </svg>
+
+            <div class="gauge__readout gauge__readout--paired">
+              <span class="gauge__rpm-value gauge__rpm-value--paired" id="speedValue">0</span>
+              <span class="gauge__rpm-unit" id="speedGaugeUnit">KM/H</span>
+            </div>
+
+            <div class="speed-warning-indicator speed-warning-indicator--paired" id="speedWarningIndicator" data-active="false" aria-live="polite">
+              <span class="redline-indicator__dot"></span>
+              <span class="redline-indicator__label">OVER LIMIT</span>
+            </div>
+
+            <div class="gear-indicator" id="gearIndicator" aria-label="Current gear" data-shifting="false">
+              <span class="gear-indicator__value" id="gearValue">N</span>
+            </div>
+          </div>
+
+          <div class="gauge-wrap gauge-wrap--paired">
             <svg id="rpmGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="RPM gauge, idle">
               <circle class="gauge__bezel" cx="150" cy="150" r="142" />
               <g id="gaugeTicks"></g>
@@ -84,51 +118,15 @@
               </g>
             </svg>
 
-            <div class="gauge__readout gauge__readout--compact">
-              <span class="gauge__rpm-value gauge__rpm-value--compact" id="rpmValue">0</span>
+            <div class="gauge__readout gauge__readout--paired">
+              <span class="gauge__rpm-value gauge__rpm-value--paired" id="rpmValue">0</span>
               <span class="gauge__rpm-unit">RPM × 1000</span>
             </div>
 
-            <div class="redline-indicator redline-indicator--compact" id="redlineIndicator" data-active="false" aria-live="polite">
+            <div class="redline-indicator redline-indicator--paired" id="redlineIndicator" data-active="false" aria-live="polite">
               <span class="redline-indicator__dot"></span>
               <span class="redline-indicator__label">REDLINE</span>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- CENTER: HERO — SPEEDOMETER -->
-      <section class="panel panel--gauge" aria-label="Speedometer">
-        <div class="gauge-wrap">
-          <svg id="speedGauge" class="gauge" viewBox="0 0 300 300" role="img" aria-label="Speedometer, 0">
-            <!-- Outer bezel -->
-            <circle class="gauge__bezel" cx="150" cy="150" r="142" />
-
-            <!-- Tick arc groups injected by speed-gauge.js -->
-            <g id="speedGaugeTicks"></g>
-
-            <!-- Warning/red zone arc near top speed -->
-            <path id="speedGaugeWarnArc" class="gauge__warn-arc" d="" />
-
-            <!-- Needle -->
-            <g id="speedGaugeNeedle" class="gauge__needle-group">
-              <line x1="150" y1="150" x2="150" y2="48" class="gauge__needle" />
-              <circle cx="150" cy="150" r="9" class="gauge__hub" />
-            </g>
-          </svg>
-
-          <div class="gauge__readout">
-            <span class="gauge__rpm-value" id="speedValue">0</span>
-            <span class="gauge__rpm-unit" id="speedGaugeUnit">KM/H</span>
-          </div>
-
-          <div class="speed-warning-indicator" id="speedWarningIndicator" data-active="false" aria-live="polite">
-            <span class="redline-indicator__dot"></span>
-            <span class="redline-indicator__label">OVER LIMIT</span>
-          </div>
-
-          <div class="gear-indicator" id="gearIndicator" aria-label="Current gear" data-shifting="false">
-            <span class="gear-indicator__value" id="gearValue">N</span>
           </div>
         </div>
 
