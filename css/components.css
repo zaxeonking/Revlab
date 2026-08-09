@@ -1,5 +1,48 @@
 /* REVLAB — Components */
 
+/* ---------- Loading state ---------- */
+.app-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  background: var(--bg-0);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-med) var(--ease-out), visibility 0s linear var(--dur-med);
+}
+
+.app-loading.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur-med) var(--ease-out);
+}
+
+.app-loading__ring {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid var(--border-1);
+  border-top-color: var(--accent-cyan);
+  animation: app-loading-spin 850ms linear infinite;
+}
+
+.app-loading__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+@keyframes app-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ---------- Brand ---------- */
 .topbar__logo {
   font-family: var(--font-display);
@@ -107,8 +150,38 @@
   color: var(--accent-red);
 }
 
+/* Distinct from "idle" — engine is actually turning under throttle,
+   not just sitting at idle RPM. Same cyan language the live telemetry
+   digits use elsewhere in the cockpit. */
+.status-chip[data-state="running"] .status-chip__dot {
+  background: var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.status-chip[data-state="running"] .status-chip__label {
+  color: var(--accent-cyan);
+}
+
+.status-chip__dot,
+.status-chip__label {
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+
 .status-chip--muted {
   opacity: 0.65;
+}
+
+/* Audio synthesis unavailable (unsupported browser / init exception) —
+   engine + gauges keep running, this just flags that sound won't play. */
+.status-chip--muted[data-audio="error"] {
+  opacity: 1;
+  border-color: var(--accent-amber);
+}
+
+.status-chip--muted[data-audio="error"] .status-chip__label {
+  color: var(--accent-amber);
 }
 
 /* Static feature indicators (TC / ABS) — constant system state, not
@@ -218,6 +291,32 @@
   fill: var(--bg-recess);
   stroke: var(--border-2);
   stroke-width: 2;
+  transition: filter var(--dur-med) var(--ease-out);
+}
+
+/* Engine start animation — a brief ignition pulse on the bezel ring,
+   triggered by ui-controller.js adding this class to each gauge-wrap
+   for ~900ms right when START ENGINE fires. Deliberately does NOT
+   touch .gauge__needle-group (no transform here) so it never fights
+   the physics-driven needle animation described above — this only
+   pulses the bezel stroke/glow, a purely cosmetic ignition cue. */
+.gauge-wrap--starting .gauge__bezel {
+  animation: gauge-ignition-pulse 900ms var(--ease-out);
+}
+
+@keyframes gauge-ignition-pulse {
+  0% {
+    stroke: var(--border-2);
+    filter: none;
+  }
+  35% {
+    stroke: var(--accent-amber);
+    filter: drop-shadow(0 0 14px rgba(255, 157, 26, 0.55));
+  }
+  100% {
+    stroke: var(--border-2);
+    filter: none;
+  }
 }
 
 .gauge__tick {
@@ -605,11 +704,19 @@
   color: var(--text-2);
   cursor: pointer;
   white-space: nowrap;
+  touch-action: manipulation;
   transition: border-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
+              color var(--dur-fast) var(--ease-out),
+              transform 100ms var(--ease-out);
 }
 
 .unit-toggle:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.unit-toggle:active {
+  transform: scale(0.94);
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
 }
@@ -666,6 +773,10 @@
 .segmented__btn[aria-pressed="true"] {
   background: var(--accent-cyan-dim);
   color: var(--text-0);
+}
+
+.segmented__btn:not(:disabled):active {
+  background: var(--accent-cyan-dim);
 }
 
 .gear-controls__shift {
@@ -805,6 +916,10 @@
   border-color: var(--accent-cyan);
   color: var(--bg-0);
   box-shadow: var(--glow-cyan);
+  transform: scale(0.97);
+  transition: background 80ms var(--ease-out), border-color 80ms var(--ease-out),
+              color 80ms var(--ease-out), box-shadow 80ms var(--ease-out),
+              transform 80ms var(--ease-out);
 }
 
 .btn--throttle[data-pressed="true"] .btn--throttle__hint {
@@ -834,6 +949,8 @@
   -webkit-user-select: none;
   user-select: none;
   touch-action: none; /* critical: prevents scroll/zoom from stealing the hold gesture */
+  transition: background 80ms var(--ease-out), border-color 80ms var(--ease-out),
+              box-shadow 80ms var(--ease-out), transform 80ms var(--ease-out);
 }
 
 .throttle-pedal__label {
@@ -896,6 +1013,8 @@
   line-height: 1;
   box-shadow: var(--shadow-panel);
   touch-action: manipulation;
+  transition: background 80ms var(--ease-out), border-color 80ms var(--ease-out),
+              color 80ms var(--ease-out), transform 80ms var(--ease-out);
 }
 
 .mobile-shifter__btn:not(:disabled):active {
@@ -957,7 +1076,15 @@
   background: var(--bg-2);
   color: var(--text-0);
   transition: background var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
+              border-color var(--dur-fast) var(--ease-out),
+              transform 100ms var(--ease-out);
+}
+
+/* Touch/click feedback shared by every .btn variant — a quick press-in
+   so taps feel acknowledged even before the async result (audio init,
+   engine state) comes back. */
+.btn:not(:disabled):active {
+  transform: scale(0.96);
 }
 
 .btn--primary {

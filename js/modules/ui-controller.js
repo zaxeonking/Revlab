@@ -31,6 +31,10 @@ const UIController = (() => {
       throttleIndicatorValue: document.getElementById('throttleIndicatorValue'),
       throttlePedalMeterFill: document.getElementById('throttlePedalMeterFill'),
       startEngineBtn: document.getElementById('startEngineBtn'),
+      // Both paired instrument bezels (speed + RPM) — targeted for the
+      // ignition-pulse animation on Start Engine (see gauge-ignition-pulse
+      // in components.css). NodeList, not a single element.
+      gaugeWraps: document.querySelectorAll('.gauge-wrap--paired'),
 
       systemLog: document.getElementById('systemLog'),
 
@@ -249,7 +253,7 @@ const UIController = (() => {
   const STATUS_CHIP_STATE = {
     off: 'off',
     idle: 'idle',
-    running: 'idle',
+    running: 'running',
     redline: 'redline',
   };
 
@@ -1028,6 +1032,41 @@ const UIController = (() => {
     }
   }
 
+  /**
+   * Briefly flags each paired gauge bezel so the CSS ignition-pulse
+   * animation (gauge-ignition-pulse, components.css) plays once. Purely
+   * cosmetic — never touches the needle transform, so it can't fight
+   * the physics-driven needle animation RPMSimulator/SpeedGauge drive
+   * every frame regardless of this class.
+   */
+  function playEngineStartAnimation() {
+    if (!els.gaugeWraps || !els.gaugeWraps.length) return;
+    els.gaugeWraps.forEach((wrap) => {
+      wrap.classList.remove('gauge-wrap--starting');
+      // Force reflow so re-adding the class re-triggers the animation
+      // even if Start Engine is pressed again shortly after Stop.
+      // eslint-disable-next-line no-unused-expressions
+      void wrap.offsetWidth;
+      wrap.classList.add('gauge-wrap--starting');
+    });
+    window.setTimeout(() => {
+      els.gaugeWraps.forEach((wrap) => wrap.classList.remove('gauge-wrap--starting'));
+    }, 900);
+  }
+
+  /**
+   * Marks the audio status chip as errored (audio unavailable) or clears
+   * that flag — separate from the text label itself (setAudioStatusLabel)
+   * so the chip styling (components.css: .status-chip--muted[data-audio])
+   * can react without re-parsing the label text.
+   */
+  function setAudioErrorFlag(hasError) {
+    const chip = els.audioStatusLabel && els.audioStatusLabel.closest('.status-chip');
+    if (!chip) return;
+    if (hasError) chip.dataset.audio = 'error';
+    else delete chip.dataset.audio;
+  }
+
   function bindStartButton() {
     if (!els.startEngineBtn) return;
     els.startEngineBtn.addEventListener('click', () => {
@@ -1038,12 +1077,28 @@ const UIController = (() => {
       } else {
         // AudioContext creation MUST happen inside this click handler —
         // it's the actual user gesture. init() is a no-op if the graph
-        // already exists from a previous Start Engine press.
-        const result = AudioEngine.init();
-        setAudioStatusLabel(result.ok
-          ? 'AUDIO ENGINE: RUNNING'
-          : 'AUDIO ENGINE: UNAVAILABLE');
+        // already exists from a previous Start Engine press. Wrapped in
+        // try/catch as a last line of defense: a synthesis failure here
+        // must never block the engine/gauges from starting.
+        let result;
+        try {
+          result = AudioEngine.init();
+        } catch (err) {
+          console.error('[AudioEngine] init() threw unexpectedly:', err);
+          result = { ok: false, reason: 'exception' };
+        }
+
+        if (result.ok) {
+          setAudioStatusLabel('AUDIO ENGINE: RUNNING');
+          setAudioErrorFlag(false);
+        } else {
+          setAudioStatusLabel('AUDIO ENGINE: UNAVAILABLE');
+          setAudioErrorFlag(true);
+          logLine('AUDIO ENGINE tidak tersedia (' + (result.reason || 'unknown') + ') — cockpit tetap berjalan tanpa suara.');
+        }
+
         EngineState.startEngine();
+        playEngineStartAnimation();
         logLine('START ENGINE — idle RPM engaged.');
       }
     });
@@ -1084,17 +1139,28 @@ const UIController = (() => {
       render(state);
       // AudioEngine.update() is a no-op until AudioEngine.init() has run
       // (first Start Engine click) — safe to call every frame regardless.
-      AudioEngine.update(state);
-      // SoundLab only ever touches categories that actually have a custom
-      // sample loaded (see sound-lab.js) — every other category is left
-      // to AudioEngine's synthesis above, untouched. Runs every frame
-      // regardless of whether any custom sample is loaded; it's a no-op
-      // per-category otherwise.
-      SoundLab.update(state);
+      // Wrapped: an exception inside Web Audio param scheduling (e.g. a
+      // browser quirk on a specific AudioParam) must never take down the
+      // gauge/telemetry render loop above, which already ran this frame.
+      try {
+        AudioEngine.update(state);
+        // SoundLab only ever touches categories that actually have a custom
+        // sample loaded (see sound-lab.js) — every other category is left
+        // to AudioEngine's synthesis above, untouched. Runs every frame
+        // regardless of whether any custom sample is loaded; it's a no-op
+        // per-category otherwise.
+        SoundLab.update(state);
+      } catch (err) {
+        console.error('[AudioEngine] update() threw — audio disabled for this session:', err);
+        setAudioStatusLabel('AUDIO ENGINE: UNAVAILABLE');
+        setAudioErrorFlag(true);
+      }
       renderSoundLabMeters(state);
-      if (!state.engineOn) setAudioStatusLabel(
-        AudioEngine.getState().isInitialized ? 'AUDIO ENGINE: STANDBY' : 'AUDIO ENGINE: NOT INITIALIZED'
-      );
+      if (!state.engineOn && !(els.audioStatusLabel && els.audioStatusLabel.closest('.status-chip').dataset.audio === 'error')) {
+        setAudioStatusLabel(
+          AudioEngine.getState().isInitialized ? 'AUDIO ENGINE: STANDBY' : 'AUDIO ENGINE: NOT INITIALIZED'
+        );
+      }
     });
 
     // Press/hold throttle sources (keyboard W/ArrowUp, desktop button,

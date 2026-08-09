@@ -19,6 +19,18 @@
 </head>
 <body>
 
+  <!-- ============ LOADING STATE ============
+       Covers the cockpit until fonts + all modules have finished
+       initializing, so the person never sees an unstyled flash or a
+       gauge snapping into its built ticks/needle. main.js removes
+       `.is-visible` (fade out) then the node itself once init() and
+       the webfonts are settled. Marked inert via aria-hidden after
+       hide so it can't trap focus/AT once gone. -->
+  <div class="app-loading is-visible" id="appLoading" role="status" aria-live="polite">
+    <div class="app-loading__ring" aria-hidden="true"></div>
+    <p class="app-loading__label">REVLAB — INITIALIZING COCKPIT…</p>
+  </div>
+
   <div class="app" id="app">
 
     <!-- ============ COCKPIT TOP BAR: brand / shift lights / status ============ -->

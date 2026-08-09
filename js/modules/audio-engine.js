@@ -304,8 +304,44 @@ const AudioEngine = (() => {
       console.warn('[AudioEngine] Web Audio API not available in this browser.');
       return { ok: false, reason: 'unsupported' };
     }
-    ctx = new Ctx();
 
+    // Everything below builds the persistent 9-layer graph. Wrapped: a
+    // handful of AudioNode constructors (or a strict AudioContext with
+    // an odd sample rate/channel count) can throw on some browsers/
+    // devices — if that happens mid-build we must not leave a half-wired
+    // graph behind and claim isInitialized, since update() would then
+    // throw every frame. Tear down and report failure instead; the rest
+    // of the cockpit (gauges, telemetry) keeps working with no audio.
+    try {
+      ctx = new Ctx();
+    } catch (err) {
+      console.error('[AudioEngine] Failed to create AudioContext:', err);
+      ctx = null;
+      return { ok: false, reason: 'context_creation_failed' };
+    }
+
+    try {
+      buildGraph();
+    } catch (err) {
+      console.error('[AudioEngine] Failed to build audio graph:', err);
+      try { ctx.close(); } catch (closeErr) { /* best-effort cleanup only */ }
+      ctx = null;
+      isInitialized = false;
+      return { ok: false, reason: 'graph_build_failed' };
+    }
+
+    isInitialized = true;
+    console.info('[AudioEngine] AudioContext + 9-layer synthesis graph initialized.');
+    return { ok: true };
+  }
+
+  /**
+   * Everything that actually wires up the 9-layer graph, split out of
+   * init() so init() itself can stay a thin try/catch + status wrapper
+   * (see above). Assumes `ctx` already exists. Throws on failure —
+   * init() is what catches it.
+   */
+  function buildGraph() {
     // ---- Bus nodes first, so layers below have somewhere to connect ----
     mixBus = ctx.createGain();
     mixBus.gain.value = MIX_TRIM;
@@ -488,10 +524,6 @@ const AudioEngine = (() => {
     oscShiftThunk.start();
     shiftClickNoiseSource.start();
     limiterLfo.start();
-
-    isInitialized = true;
-    console.info('[AudioEngine] AudioContext + 9-layer synthesis graph initialized.');
-    return { ok: true };
   }
 
   /** Fades the whole engine tone in via masterFadeGain. Safe to call
