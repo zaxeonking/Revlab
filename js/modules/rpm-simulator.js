@@ -11,14 +11,6 @@
  * gear ratio and clutch engagement are properties of the DRIVETRAIN, not
  * the engine itself. RPM is still the only thing this module owns.
  *
- * This module now also reads (never writes) Gearbox.gearRatioFor() —
- * see triggerShiftDip() below — so the RPM landed on after a shift is
- * always the exact mechanical result of the ratio change, computed from
- * the same gear-ratio spec Gearbox/VEHICLE SETUP already own, instead
- * of a second, independently-tuned approximation living in this file.
- * gearbox.js must be loaded before this file (see index.html script
- * order) since Gearbox is referenced directly by name, not injected.
- *
  * Model (deterministic, no Math.random anywhere):
  *   - Throttle (0–100%) sets a TARGET rpm between idle and max.
  *   - Current RPM chases the target at a limited rate (RPM per second),
@@ -124,21 +116,15 @@ const RPMSimulator = (() => {
   // dipActive/step() above), which holds regardless of how deep or fast
   // the dip itself is.
   const SHIFT_DIP_RATE_RPM_PER_S = 3200;
-  // Dip target is no longer a hand-tuned flat fraction of currentRpm.
-  // It's the exact mechanical result of the ratio change between the
-  // gear being LEFT and the gear being ENTERED:
-  //
-  //   newRPM = currentRPM × newGearRatio / currentGearRatio
-  //
-  // This is the same formula a real synchro/clutch produces: the
-  // engine's speed doesn't change instantly at the moment of the shift,
-  // but the gear ratio it's coupled to does, so its RPM is recalculated
-  // against the new ratio the instant drive is re-engaged. See
-  // triggerShiftDip() below, which reads both ratios from Gearbox
-  // (single source of truth — gearbox.js) rather than duplicating them
-  // here. GEAR_DIP_FRACTION is gone; nothing here is a tuned constant
-  // anymore, it's derived from the same gear-ratio spec VEHICLE SETUP
-  // already drives.
+  // Per-gear dip depth (dip target = currentRpm * (1 - fraction)),
+  // indexed by the gear being ENTERED — same indexing as
+  // GEAR_ACCEL_MULT (0 = neutral, 1..6 = gears). Deepened a lot for
+  // 1st–4th — "nyentak kebelakang setengahnya" was asking for the
+  // needle to visibly kick back roughly HALF its pre-shift value on
+  // these shifts, not the shallow 8–15% from the previous tune (that
+  // read as barely a dip at all once it was smoothed out). 5th/6th
+  // stay more moderate — not the gears in question here.
+  const GEAR_DIP_FRACTION = [0, 0.45, 0.50, 0.45, 0.40, 0.22, 0.28];
 
   // A dip models the clutch briefly interrupting POWER — that only makes
   // sense for a shift that happens while the driver is actually on the
@@ -504,32 +490,20 @@ const RPMSimulator = (() => {
    * stepGear/shiftUp/shiftDown) to make RPM visibly dip — the moment
    * that was previously missing, which is why shifts felt instant even
    * though the gear NUMBER was already being held/delayed correctly.
-   *
-   * The dip target is now computed from the actual gear-ratio spec via
-   * Gearbox.gearRatioFor(), not a tuned flat fraction:
-   *
-   *   newRPM = currentRPM × newGearRatio / currentGearRatio
-   *
-   * fromGearIndex/toGearIndex are the gear being left and the gear
-   * being entered (both 1–6; engine-state.js never dips a 0↔1 neutral
-   * engagement — see the "enteringFromNeutral" branch in stepGear()).
-   * If either index has no ratio (defensive only — shouldn't happen for
-   * a real shift) this falls back to the previous engine RPM unchanged,
-   * i.e. no dip, rather than guessing.
+   * The dip target scales off whatever RPM the engine was AT when the
+   * shift happened, so a shift at high RPM dips further (in absolute
+   * rpm) than one at low RPM, same as a real clutch/synchro moment.
    */
-  function triggerShiftDip(fromGearIndex, toGearIndex) {
+  function triggerShiftDip() {
     if (!engineOn) return;
     // Coasting shift (throttle released): no power to interrupt, so no
     // artificial dip — RPM just keeps following its existing decel curve
     // through the gear change. See SHIFT_DIP_THROTTLE_THRESHOLD above.
     if (throttlePercent < SHIFT_DIP_THROTTLE_THRESHOLD) return;
-
-    const currentGearRatio = Gearbox.gearRatioFor(fromGearIndex);
-    const newGearRatio = Gearbox.gearRatioFor(toGearIndex);
-    if (!currentGearRatio || !newGearRatio) return; // neutral or unknown gear — nothing to recalc against
-
-    const computedRpm = currentRpm * (newGearRatio / currentGearRatio);
-    dipTargetRpm = Math.min(Math.max(computedRpm, IDLE_RPM), MAX_RPM);
+    const fraction = GEAR_DIP_FRACTION[engagedGearIndex] !== undefined
+      ? GEAR_DIP_FRACTION[engagedGearIndex]
+      : 0.32;
+    dipTargetRpm = Math.max(IDLE_RPM, currentRpm * (1 - fraction));
     dipActive = true;
     dipStartedAt = now();
   }
@@ -561,5 +535,6 @@ const RPMSimulator = (() => {
     getMaxRpm: () => MAX_RPM,
     getRedlineRpm: () => REDLINE_RPM,
     getRevLimitRpm: () => REV_LIMIT_RPM,
+    GEAR_DIP_FRACTION,
   };
 })();
