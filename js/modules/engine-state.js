@@ -57,6 +57,13 @@ const EngineState = (() => {
   const DEFAULT_MAX_SPEED_KMH = 260;
   let MAX_SPEED_KMH = DEFAULT_MAX_SPEED_KMH;
   const KMH_PER_MPH = 1.609344;
+  // Mirrors RPMSimulator's own COAST_THROTTLE_THRESHOLD — "foot off the
+  // gas" for the purposes of coast-deceleration below. Kept as a
+  // separate constant (not imported) since the two modules don't share
+  // internals, but both need the same definition of "coasting" so the
+  // RPM-side and speed-side coasting behavior always agree on when
+  // they're active.
+  const COAST_THROTTLE_THRESHOLD = 4; // %
 
   // Baseline vehicle spec these formulas were tuned against — used only
   // to turn VEHICLE SETUP's absolute Weight/Power/Torque numbers into a
@@ -247,6 +254,78 @@ const EngineState = (() => {
 
   let GEARS = buildGears(IDLE_RPM, REDLINE_RPM, MAX_RPM).gears;
   let MAX_GEAR_INDEX = GEARS.length - 1;
+
+  // ---- AUTO transmission: throttle/load-aware shift points -----------
+  // GEARS[i].upAt (built above) is each gear's own near-redline ceiling
+  // — correct for "throttle pinned, hold the gear as long as possible",
+  // but AUTO used to use that SAME number no matter what the driver was
+  // doing with their foot, so even a light, steady cruise throttle held
+  // every gear all the way to redline before shifting — a fixed-ratio
+  // gearbox doesn't do that, an automatic (or a driver short-shifting to
+  // save gas) upshifts much earlier at light throttle to keep RPM low.
+  // EARLY_UPSHIFT_FRACTION is how far below the full-throttle upAt the
+  // shift point moves at (near-)zero throttle; upshiftThresholdRpm()
+  // below blends linearly between that and the full upAt by throttle —
+  // full throttle reproduces the original near-redline behavior exactly
+  // (blend factor 1), light throttle shifts much sooner.
+  const EARLY_UPSHIFT_FRACTION = 0.52;
+
+  /** Throttle-blended upshift RPM for the gear currently engaged — see
+   *  comment above. Returns null where there's no upshift at all (top
+   *  gear). Neutral→1st (gearIndex 0) is deliberately NOT blended: that
+   *  threshold is about leaving idle, not about shift feel, so it always
+   *  uses its fixed neutralUpAt regardless of throttle. */
+  function upshiftThresholdRpm(forGearIndex, throttlePercent) {
+    const gear = GEARS[forGearIndex];
+    if (!gear || gear.upAt === null) return null;
+    if (forGearIndex === 0) return gear.upAt;
+    const throttle = throttlePercent || 0;
+    if (throttle < COAST_THROTTLE_THRESHOLD) {
+      // Coasting (foot fully off the gas — see COAST_THROTTLE_THRESHOLD/
+      // the coasting model above), not "light cruise throttle". Use the
+      // gear's full near-redline upAt here, not the early-shift blend
+      // below: a coasting downshift (engine braking landing at high RPM
+      // in the lower gear, e.g. 6th→5th going downhill) would otherwise
+      // immediately satisfy the early-shift threshold and upshift right
+      // back — producing a 5↔6-style hunting loop for as long as the
+      // car keeps coasting. Zero throttle isn't "shift early to save
+      // gas", it's "driver isn't asking this gearbox to do anything".
+      return gear.upAt;
+    }
+    const throttleFrac = clamp(throttle / 100, 0, 1);
+    const earlyUpAt = Math.max(IDLE_RPM + 300, Math.round(gear.upAt * EARLY_UPSHIFT_FRACTION));
+    return Math.round(earlyUpAt + (gear.upAt - earlyUpAt) * throttleFrac);
+  }
+
+  // ---- AUTO transmission: kickdown (downshift for torque) ------------
+  // The hysteresis downAt built into GEARS is a COASTING threshold — it
+  // fires as RPM drifts down on its own (lifting off the gas). It does
+  // NOT cover the opposite, very common case: cruising in a tall gear at
+  // low RPM and then flooring it — a real automatic (and safeDownAt's
+  // ratio math already sitting right there) downshifts for torque the
+  // moment the driver asks for real power at an RPM too low to give much
+  // of it, rather than just labouring in the tall gear. KICKDOWN_RPM_
+  // FRACTION mirrors TORQUE_PEAK_FRACTION above (~42% of the idle→
+  // redline band) — below that, torque output is still on the rising
+  // part of the curve, so there's real benefit to dropping a gear.
+  const KICKDOWN_THROTTLE_THRESHOLD = 65; // % — driver has to actually be asking for power
+  const KICKDOWN_RPM_FRACTION = 0.42;
+  // Minimum time a gear has to have been engaged before kickdown will
+  // consider dropping back OUT of it. Without this, kickdown fought the
+  // gearbox's own automatic upshifts: landing RPM right after an upshift
+  // (post shift-dip) is often itself below kickdownThresholdRpm for a
+  // brief moment while it's still climbing back up under power, which —
+  // at full throttle — made AUTO upshift 1→2, immediately "kickdown"
+  // back 2→1, immediately upshift again, forever (visible as gear
+  // hunting 1↔2 and never reaching 3rd+). Requiring the gear to have
+  // been in place for a bit first means kickdown only fires for what it
+  // was actually meant for: stomping the throttle while cruising
+  // steadily, not the tail end of the gearbox's own upshift settling.
+  const KICKDOWN_MIN_DWELL_MS = 900;
+
+  function kickdownThresholdRpm() {
+    return Math.round(IDLE_RPM + KICKDOWN_RPM_FRACTION * (REDLINE_RPM - IDLE_RPM));
+  }
 
   // How long (ms) the gearbox "locks" after any shift before it will
   // shift again — models clutch/synchro engagement time. This is what
@@ -465,6 +544,7 @@ const EngineState = (() => {
   let gearIndex = 0;
   let gearMode = 'auto'; // 'auto' | 'manual'
   let shiftLockUntil = 0; // performance.now() timestamp
+  let gearEnteredAt = 0; // performance.now() timestamp — see KICKDOWN_MIN_DWELL_MS above
 
   // ---- Displayed-speed smoothing -------------------------------------
   // Speed is derived per-gear via Gearbox.speedForRpm(), so the instant a
@@ -479,6 +559,28 @@ const EngineState = (() => {
   const SPEED_DISPLAY_RATE_KMH_PER_S = 260;
   let displaySpeedKmh = 0;
   let lastSpeedTs = null;
+
+  // ---- Coasting deceleration ------------------------------------------
+  // Gearbox.speedForRpm() and Gearbox.rpmForSpeed() are exact inverses
+  // of each other, which is correct for the DRIVING case (engine pushes
+  // the wheels, speed is whatever RPM/gear ratio implies) — but if
+  // that's ALSO used to derive speed while coasting, the two formulas
+  // just cancel out: RPM implies a speed, that speed implies the same
+  // RPM back, forever, with nothing ever slowing the car down. Real
+  // coasting decelerates because of engine braking + rolling/aero
+  // drag — a force that isn't RPM↔speed conversion, it's genuinely
+  // losing road speed over time. So while coasting (throttle closed, a
+  // gear engaged), road speed is decayed directly at a fixed rate
+  // (below), and RPM is what's derived FROM that falling speed via the
+  // gear ratio (RPMSimulator's coastTargetRpm, set from displaySpeedKmh
+  // every frame) — i.e. during coasting the causality flips from the
+  // normal "RPM drives speed" to "speed (decaying) drives RPM", which
+  // is exactly the "engine RPM follows vehicle speed and drivetrain"
+  // behavior wanted. COAST_DECEL_KMH_PER_S is scaled by VEHICLE SETUP's
+  // Engine Braking (0–100) in applyVehicleSetup() below — more engine
+  // braking scrubs speed off faster while coasting in gear, same
+  // parameter that already controls how fast RPM itself falls.
+  let COAST_DECEL_KMH_PER_S = 5.5;
 
   function approachSpeed(current, target, dtSeconds) {
     const maxStep = SPEED_DISPLAY_RATE_KMH_PER_S * dtSeconds;
@@ -534,6 +636,46 @@ const EngineState = (() => {
     shiftLockUntil = now() + SHIFT_LOCK_MS;
   }
 
+  /** Call every time gearIndex is actually reassigned — see
+   *  KICKDOWN_MIN_DWELL_MS above for why kickdown needs to know how long
+   *  the current gear has really been engaged for. */
+  function markGearEntered() {
+    gearEnteredAt = now();
+  }
+
+  /**
+   * Syncs the public `state` snapshot's gear-related fields (gear,
+   * gearIndex, gearMode, canShiftUp/Down) to match the internal
+   * gearIndex/gearMode variables RIGHT NOW, and notifies subscribers —
+   * instead of leaving the snapshot stale until the next RPMSimulator
+   * frame happens to tick through deriveFromFrame().
+   *
+   * BUG this fixes: shiftUp()/shiftDown()/setGearMode() used to mutate
+   * gearIndex/gearMode directly but never touch `state` or call
+   * notify() themselves — deriveFromFrame() was the only thing that
+   * ever wrote state.gear/gearIndex/gearMode, and that only runs on the
+   * NEXT RPMSimulator frame. Called synchronously from a click handler
+   * (see ui-controller.js SHIFT ▲/▼ buttons, which read
+   * `EngineState.shiftDown().gear` to log "SHIFT DOWN — gigi X → Y"),
+   * the returned snapshot was therefore always one frame stale — the
+   * shift had genuinely happened internally, but getState() right after
+   * calling shiftDown() still reported the OLD gear, so that before/
+   * after comparison never once fired correctly. Same staleness applied
+   * to the mode toggle immediately after calling setGearMode(). Calling
+   * this at the end of each of those three functions makes their return
+   * value (and every subscriber) correct the instant the call returns,
+   * not one frame later.
+   */
+  function syncGearDisplayState() {
+    const gear = GEARS[gearIndex];
+    state.gearIndex = gearIndex;
+    state.gear = gear ? gear.label : state.gear;
+    state.gearMode = gearMode;
+    state.canShiftUp = state.engineOn && gearIndex < MAX_GEAR_INDEX && !isShiftLocked();
+    state.canShiftDown = state.engineOn && gearIndex > 0 && !isShiftLocked();
+    notify();
+  }
+
   /**
    * Advances the gearbox state machine by at most one gear per call,
    * given the current RPM. Called every simulation frame in auto mode;
@@ -549,7 +691,7 @@ const EngineState = (() => {
    * shift, and then locks out further shifts for SHIFT_LOCK_MS — so a
    * shift always reads as one deliberate step-then-pause, not a flicker.
    */
-  function stepGear(rpm, engineOn) {
+  function stepGear(rpm, engineOn, throttlePercent) {
     if (!engineOn) {
       gearIndex = 0;
       return;
@@ -557,11 +699,13 @@ const EngineState = (() => {
     if (isShiftLocked()) return;
 
     const current = GEARS[gearIndex];
+    const upAt = upshiftThresholdRpm(gearIndex, throttlePercent);
 
-    if (current.upAt !== null && rpm >= current.upAt && gearIndex < MAX_GEAR_INDEX) {
+    if (upAt !== null && rpm >= upAt && gearIndex < MAX_GEAR_INDEX) {
       const enteringFromNeutral = gearIndex === 0;
       const fromGearIndex = gearIndex;
       gearIndex += 1;
+      markGearEntered();
       RPMSimulator.setGear(gearIndex);
       if (enteringFromNeutral) {
         // Engaging 1st from a standing start isn't a shift BETWEEN two
@@ -591,10 +735,37 @@ const EngineState = (() => {
       if (predictedRpm !== null && predictedRpm > REDLINE_RPM) return;
 
       gearIndex = toGearIndex;
+      markGearEntered();
       engageShiftLock();
       RPMSimulator.setGear(gearIndex);
       signalShiftEvent(fromGearIndex, gearIndex);
       return;
+    }
+
+    // Kickdown: driver is asking for real power (throttle above the
+    // kickdown threshold) but current RPM is low enough in this gear
+    // that there isn't much torque on tap yet (see KICKDOWN_RPM_FRACTION
+    // above) — drop a gear for torque, same redline safety check the
+    // coasting downshift above uses. Separate from the coasting downAt
+    // check on purpose: this fires because of what the driver is asking
+    // for (throttle), not because RPM drifted down on its own.
+    if (
+      gearIndex > 1
+      && (throttlePercent || 0) >= KICKDOWN_THROTTLE_THRESHOLD
+      && rpm < kickdownThresholdRpm()
+      && (now() - gearEnteredAt) >= KICKDOWN_MIN_DWELL_MS
+    ) {
+      const fromGearIndex = gearIndex;
+      const toGearIndex = gearIndex - 1;
+      const predictedRpm = predictShiftRpm(rpm, fromGearIndex, toGearIndex);
+      if (predictedRpm !== null && predictedRpm <= REDLINE_RPM) {
+        gearIndex = toGearIndex;
+        markGearEntered();
+        engageShiftLock();
+        RPMSimulator.setGear(gearIndex);
+        signalShiftEvent(fromGearIndex, gearIndex);
+        return;
+      }
     }
 
     // Falling back to neutral: only from 1st gear, once RPM has coasted
@@ -603,6 +774,7 @@ const EngineState = (() => {
     // case is what returns the gearbox to N.
     if (gearIndex === 1 && rpm <= IDLE_RPM + 50) {
       gearIndex = 0;
+      markGearEntered();
       engageShiftLock();
       RPMSimulator.setGear(gearIndex);
       // No triggerShiftDip() here on purpose: coasting to a stop and
@@ -677,7 +849,7 @@ const EngineState = (() => {
       // move, leaving SPEED reading a nonzero value while the gear badge
       // still looked like it should've stayed at N. Gear now only
       // reacts to RPM once the flare has finished settling into idle.
-      stepGear(frame.rpm, frame.engineOn);
+      stepGear(frame.rpm, frame.engineOn, frame.throttlePercent);
     }
     // In manual mode, gearIndex only ever changes via shiftUp()/shiftDown().
 
@@ -703,17 +875,27 @@ const EngineState = (() => {
     // SAME RPM in 6th now correctly produce different, mechanically
     // real speeds, related through the gear ratio rather than an
     // arbitrary table.
-    let targetSpeedKmh = 0;
-    if (frame.engineOn && gearIndex > 0) {
-      // Governor: VEHICLE SETUP's Top Speed caps the driven target
-      // regardless of what the raw gear-ratio math would otherwise
-      // produce — same as a real ECU/speed limiter cutting in.
-      targetSpeedKmh = Math.min(Gearbox.speedForRpm(frame.rpm, gearIndex), MAX_SPEED_KMH);
-    }
-
     const nowTs = now();
     const dtSeconds = lastSpeedTs === null ? 0 : Math.min((nowTs - lastSpeedTs) / 1000, 0.1);
     lastSpeedTs = nowTs;
+
+    const isCoastingSpeed = frame.engineOn && gearIndex > 0 && frame.throttlePercent < COAST_THROTTLE_THRESHOLD;
+
+    let targetSpeedKmh = 0;
+    if (frame.engineOn && gearIndex > 0) {
+      if (isCoastingSpeed) {
+        // See COAST_DECEL_KMH_PER_S comment above — decay road speed
+        // directly instead of re-deriving it from RPM, so coasting
+        // actually loses speed over time instead of RPM/speed just
+        // canonically implying each other forever.
+        targetSpeedKmh = Math.max(0, displaySpeedKmh - COAST_DECEL_KMH_PER_S * dtSeconds);
+      } else {
+        // Driving: governor (VEHICLE SETUP's Top Speed) caps the target
+        // regardless of what the raw gear-ratio math would otherwise
+        // produce — same as a real ECU/speed limiter cutting in.
+        targetSpeedKmh = Math.min(Gearbox.speedForRpm(frame.rpm, gearIndex), MAX_SPEED_KMH);
+      }
+    }
 
     // ---- TURBO / BOOST — see stepBoost() above for the full model.
     // Same dtSeconds this tick's speed smoothing uses, so boost and
@@ -741,6 +923,19 @@ const EngineState = (() => {
       displaySpeedKmh = approachSpeed(displaySpeedKmh, targetSpeedKmh, dtSeconds);
     }
     state.speedKmh = Math.round(displaySpeedKmh);
+
+    // Feed this frame's wheel speed back to RPMSimulator as the RPM it
+    // implies in the currently-engaged gear (exact inverse of the
+    // speedForRpm math above) — see the coastTargetRpm comment in
+    // rpm-simulator.js. Only meaningful with a real mechanical link
+    // (engine on, gear engaged); null otherwise so coasting-toward-idle
+    // is the only thing that can happen in neutral or with the engine off.
+    if (frame.engineOn && gearIndex > 0) {
+      RPMSimulator.setCoastTarget(Gearbox.rpmForSpeed(displaySpeedKmh, gearIndex));
+    } else {
+      RPMSimulator.setCoastTarget(null);
+    }
+
     state.engineTempC = frame.engineOn
       ? Math.round(AMBIENT_TEMP_C + rpmFraction * (OPERATING_TEMP_C - AMBIENT_TEMP_C))
       : AMBIENT_TEMP_C;
@@ -797,6 +992,7 @@ const EngineState = (() => {
     gearIndex = 0;
     gearMode = 'auto';
     shiftLockUntil = 0;
+    gearEnteredAt = 0;
     displaySpeedKmh = 0;
     lastSpeedTs = null;
     spoolFraction = 0;
@@ -858,6 +1054,7 @@ const EngineState = (() => {
     if (gearIndex >= MAX_GEAR_INDEX) return getState();
     const fromGearIndex = gearIndex;
     gearIndex += 1;
+    markGearEntered();
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
     signalShiftEvent(fromGearIndex, gearIndex);
@@ -884,6 +1081,7 @@ const EngineState = (() => {
     const predictedRpm = predictShiftRpm(state.rpm, fromGearIndex, toGearIndex);
     if (predictedRpm !== null && predictedRpm > REDLINE_RPM) return getState();
     gearIndex = toGearIndex;
+    markGearEntered();
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
     signalShiftEvent(fromGearIndex, gearIndex);
@@ -954,6 +1152,11 @@ const EngineState = (() => {
     // original hand-tuned DECEL/SPINDOWN rates exactly.
     const decelRate = Math.round(300 + setup.engineBraking * 24);   // 0→300, 50→1500, 100→2700
     const spindownRate = Math.round(500 + setup.engineBraking * 30); // 0→500, 50→2000, 100→3500
+    // Same Engine Braking parameter also scales how fast road speed
+    // itself scrubs off while coasting in gear (see COAST_DECEL_KMH_PER_S
+    // comment above) — 0→2.5 (barely any engine braking, mostly aero/
+    // rolling drag), 50→5.5 (the original hand-picked default), 100→8.5.
+    COAST_DECEL_KMH_PER_S = 2.5 + setup.engineBraking * 0.06;
 
     RPMSimulator.configure({
       idleRpm: IDLE_RPM,

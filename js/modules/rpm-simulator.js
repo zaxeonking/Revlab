@@ -177,6 +177,28 @@ const RPMSimulator = (() => {
 
   const MAX_DT_S = 0.05; // clamp huge gaps (e.g. tab was backgrounded) so physics doesn't jump
 
+  // ---- Coasting / engine-braking coupling ----
+  // While the throttle is closed, RPM used to always chase IDLE_RPM
+  // directly, no matter how fast the car was still moving — which meant
+  // lifting off at 6000rpm/120kmh in 4th made the tach dive straight to
+  // idle while the car was very obviously still doing 120. Real engines
+  // don't do that: as long as a gear is engaged (clutch/torque-converter
+  // locked), the engine is mechanically tied to the wheels through the
+  // gear ratio, so RPM only falls as fast as road speed does (engine
+  // braking) — it doesn't have its own independent path back to idle
+  // until the car has actually slowed down (or the driver shifts to N).
+  //
+  // engine-state.js calls setCoastTarget() every frame with the RPM the
+  // CURRENT wheel speed implies in the CURRENT gear (via the same
+  // Gearbox.rpmForSpeed() used elsewhere) — the exact inverse of the
+  // rpm→speed math that drives the speedometer. step() below uses that,
+  // not IDLE_RPM, as the closed-throttle target for as long as it's
+  // still above idle; once it isn't (car has coasted down close to
+  // idle speed), the normal idle-chase takes back over on its own,
+  // since coastTargetRpm naturally falls below IDLE_RPM at that point.
+  const COAST_THROTTLE_THRESHOLD = 4; // % — below this, treat as "foot off the gas" for coast coupling
+  let coastTargetRpm = null;
+
   // ---- Simulation state (the only place RPM actually lives) ----
   let currentRpm = 0;
   let throttlePercent = 0;
@@ -366,7 +388,20 @@ const RPMSimulator = (() => {
     const idleWobble = effectiveThrottle < IDLE_WOBBLE_THROTTLE_THRESHOLD
       ? Math.sin((now() / 1000) * IDLE_WOBBLE_HZ * Math.PI * 2) * IDLE_WOBBLE_RPM
       : 0;
-    const targetRpm = IDLE_RPM + (effectiveThrottle / 100) * (MAX_RPM - IDLE_RPM) + idleWobble;
+
+    // Coasting: foot off the gas, a gear is engaged, and the wheels are
+    // still turning fast enough that they'd be driving the engine above
+    // idle through the gear ratio — follow THAT instead of diving for
+    // idle (see coastTargetRpm comment above). Any real throttle input,
+    // neutral, or a car that's already slowed down close to idle speed
+    // all fall through to the normal idle-chase target below.
+    const isCoasting = effectiveThrottle < COAST_THROTTLE_THRESHOLD
+      && engagedGearIndex > 0
+      && coastTargetRpm !== null
+      && coastTargetRpm > IDLE_RPM;
+    const targetRpm = isCoasting
+      ? Math.min(coastTargetRpm, MAX_RPM)
+      : IDLE_RPM + (effectiveThrottle / 100) * (MAX_RPM - IDLE_RPM) + idleWobble;
 
     const risingRate = ACCEL_RATE_RPM_PER_S * gearAccelMultiplier();
     const rate = targetRpm >= currentRpm ? risingRate : DECEL_RATE_RPM_PER_S;
@@ -453,6 +488,16 @@ const RPMSimulator = (() => {
     throttlePercent = Math.min(Math.max(Number(percent) || 0, 0), 100);
   }
 
+  /** Called every frame by engine-state.js with the RPM the current
+   *  wheel speed implies in the current gear (Gearbox.rpmForSpeed) — see
+   *  the coastTargetRpm comment above for why. Pass null/undefined (or
+   *  any non-finite/non-positive value) to clear it, e.g. when the
+   *  engine is off or the gearbox is in neutral and there's no
+   *  mechanical link to imply anything from. */
+  function setCoastTarget(rpm) {
+    coastTargetRpm = (typeof rpm === 'number' && isFinite(rpm) && rpm > 0) ? rpm : null;
+  }
+
   /** PERFORMANCE MODE — PAUSE. Freezes the physics loop in place (see
    *  loop() above); does not touch engineOn/currentRpm/gear at all, so
    *  RESUME picks up from exactly where it left off. */
@@ -488,6 +533,7 @@ const RPMSimulator = (() => {
     engagedGearIndex = 0;
     paused = false;
     lastTimestamp = null;
+    coastTargetRpm = null;
     notify();
   }
 
@@ -551,6 +597,7 @@ const RPMSimulator = (() => {
     reset,
     setThrottle,
     setGear,
+    setCoastTarget,
     triggerShiftDip,
     configure,
     // Function getters, not plain properties — IDLE_RPM/MAX_RPM/etc.
