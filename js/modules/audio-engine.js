@@ -24,8 +24,15 @@
  *                       oscillator + persistent filtered-noise click, gain
  *                       ENVELOPE fired on EngineState's gearShiftEventId
  *                       incrementing)
- *   9. REV LIMITER    — fuel-cut stutter (LFO modulating the mix bus gain),
- *                       only active while EngineState reports revLimiting
+ *   9. REV LIMITER    — DISABLED (was a fuel-cut stutter, an LFO
+ *                       modulating the mix bus gain); too harsh/unpleasant
+ *                       to listen to, so it's now permanently silent —
+ *                       hitting the limiter is just the engine's pitch
+ *                       smoothly holding at MAX_FREQ_HZ, no gating. The
+ *                       node graph is still built (so SoundLab's separate,
+ *                       user-loadable custom "limiter" sample still has
+ *                       something to crossfade against/replace), it's
+ *                       just never driven above 0 gain anymore.
  *
  *   ENGINE LOW -----\
  *   ENGINE MID ------+
@@ -610,7 +617,13 @@ const AudioEngine = (() => {
     const lowDuck = duck('low');
     const midDuck = duck('mid');
     const highDuck = duck('high');
-    const limiterDuck = duck('limiter');
+    // NOTE: no limiterDuck here anymore — the synth's own rev-limiter
+    // stutter (Layer 9) is permanently disabled below, so there's
+    // nothing left for a SoundLab custom "limiter" sample to crossfade
+    // against on this side. SoundLab's own limiter playback (see
+    // sound-lab.js) is untouched — the user can still load a custom
+    // limiter sound of their own; only this file's built-in stutter is
+    // gone.
 
     // ---- Layer 1: ENGINE LOW — pitch + level, RPM-driven -------------------
     glide(oscLow1.frequency, fundFreq / 4);
@@ -671,8 +684,13 @@ const AudioEngine = (() => {
       triggerGearShift();
     }
 
-    // ---- Layer 9: REV LIMITER — stutter only while actually limiting --------
-    glide(limiterLfoDepthGain.gain, (frame.revLimiting ? LIMITER_LFO_DEPTH : 0) * limiterDuck, 0.03);
+    // ---- Layer 9: REV LIMITER — stutter DISABLED, see LIMITER_LFO_DEPTH
+    // comment above. depth stays permanently 0 regardless of
+    // frame.revLimiting; fundFreq (layers 1-3's pitch, computed from
+    // rpmFractionOf() above) is the only thing that still reacts to
+    // hitting the limiter — it keeps climbing smoothly right up to
+    // MAX_FREQ_HZ and holds there, no gating on top.
+    glide(limiterLfoDepthGain.gain, 0, 0.03);
 
     // ---- Shared tone filter (all layers) — opens up with RPM -----------------
     glide(toneFilter.frequency, TONE_FILTER_MIN_HZ + fraction * (TONE_FILTER_MAX_HZ - TONE_FILTER_MIN_HZ));

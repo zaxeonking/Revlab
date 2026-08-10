@@ -53,6 +53,7 @@ const UIController = (() => {
       speedWarningIndicator: document.getElementById('speedWarningIndicator'),
       speedUnitToggle: document.getElementById('speedUnitToggle'),
       speedGaugeNeedle: document.getElementById('speedGaugeNeedle'),
+      rpmGaugeNeedle: document.getElementById('gaugeNeedle'),
       tempReadout: document.getElementById('tempReadout'),
       boostReadout: document.getElementById('boostReadout'),
       boostGaugeValue: document.getElementById('boostGaugeValue'),
@@ -1063,14 +1064,13 @@ const UIController = (() => {
     }
   }
 
-  /** Plays the speed needle's one-shot "self-test" sweep — see the
-   *  .gauge__needle-group--startup-sweep keyframes in components.css for
-   *  why this is safe to layer on top of the real per-frame render().
+  /** Plays the one-shot "self-test" sweep on a single needle group — see
+   *  the .gauge__needle-group--startup-sweep keyframes in components.css
+   *  for why this is safe to layer on top of the real per-frame render().
    *  Removing the class on 'animationend' (rather than a matching
    *  setTimeout) guarantees it can never get stuck applied if the tab
    *  was backgrounded/throttled mid-animation. */
-  function playSpeedStartupSweep() {
-    const el = els.speedGaugeNeedle;
+  function playNeedleStartupSweep(el) {
     if (!el) return;
     el.classList.remove('gauge__needle-group--startup-sweep');
     // Force reflow so re-adding the class retriggers the animation even
@@ -1082,6 +1082,18 @@ const UIController = (() => {
     el.addEventListener('animationend', () => {
       el.classList.remove('gauge__needle-group--startup-sweep');
     }, { once: true });
+  }
+
+  /** Fires the sweep on BOTH instruments together on START ENGINE — the
+   *  RPM needle's real start-flare physics (see rpm-simulator.js) only
+   *  swings up to ~1650rpm, a small fraction of the dial; this cosmetic
+   *  full 0→max→0 sweep gives both gauges the same satisfying power-on
+   *  flourish a real instrument cluster does, speed included (which has
+   *  no physics-driven motion of its own to show since the car is
+   *  stationary at start). */
+  function playGaugeStartupSweep() {
+    playNeedleStartupSweep(els.speedGaugeNeedle);
+    playNeedleStartupSweep(els.rpmGaugeNeedle);
   }
 
   /** Shared start/stop logic — used by both the START ENGINE button
@@ -1102,7 +1114,7 @@ const UIController = (() => {
         ? 'AUDIO ENGINE: RUNNING'
         : 'AUDIO ENGINE: UNAVAILABLE');
       EngineState.startEngine();
-      playSpeedStartupSweep();
+      playGaugeStartupSweep();
       logLine('START ENGINE — idle RPM engaged.');
     }
   }
