@@ -96,18 +96,6 @@ const RPMSimulator = (() => {
   let DECEL_RATE_RPM_PER_S = DEFAULT_DECEL_RATE_RPM_PER_S;
   let SPINDOWN_RATE_RPM_PER_S = DEFAULT_SPINDOWN_RATE_RPM_PER_S;
 
-  // The needle isn't just "coasting down" once ignition is truly off — the
-  // gauge itself loses its power source, so the reading should collapse
-  // fast, not glide down over multiple seconds at the same tunable
-  // engine-braking-derived SPINDOWN_RATE_RPM_PER_S above (that rate is
-  // meant for how the engine itself spins down, and stays driver-tunable
-  // via VEHICLE SETUP's Engine Braking field). This multiplier is applied
-  // ONLY in the ignition-off branch of step() below, on top of whatever
-  // SPINDOWN_RATE_RPM_PER_S currently is, so a higher Engine Braking
-  // setting still spins down a bit faster than a lower one, but the
-  // baseline is always a quick "lost power" drop instead of a slow fade.
-  const IGNITION_OFF_DECAY_MULTIPLIER = 4.5;
-
   // Per-gear acceleration multiplier applied on top of ACCEL_RATE_RPM_PER_S.
   // Index 0 = neutral/no gear engaged (kept brisk — revving in neutral
   // has no drivetrain load), index 1 = 1st gear (heaviest multiplier,
@@ -117,6 +105,32 @@ const RPMSimulator = (() => {
   // while top gears get noticeably flatter/heavier so the "long pull" of
   // a high gear actually feels like it's working against something.
   const GEAR_ACCEL_MULT = [1.35, 2.30, 1.65, 1.20, 0.85, 0.60, 0.46];
+
+  // ---- Off-idle throttle-response softening ----------------------------
+  // A light throttle tip-in right off idle used to close almost the
+  // entire gap to its target in a couple of frames (e.g. idle→~2000rpm
+  // in under 0.16s in 1st gear) — technically animated, but fast enough
+  // relative to how SMALL that rpm delta is that it read as an instant
+  // snap rather than the needle visibly sweeping up. Real engines don't
+  // have zero rotational inertia either: the first bit of any tip-in
+  // builds RPM more gradually than a hard mid-pull does. This scales the
+  // RISING rate down near idle and eases back up to the normal (full)
+  // rate by OFF_IDLE_SOFTEN_BAND_RPM above idle — so a light blip now
+  // visibly ramps, while a full WOT pull barely slows down at all (it
+  // spends only a moment in the softened band before the rest of the
+  // sweep runs at the usual aggressive rate). Only applies while RISING
+  // toward a target above idle-adjacent RPM; decel/coast/dip/rev-limiter
+  // paths are untouched.
+  const OFF_IDLE_SOFTEN_BAND_RPM = 1400;
+  const OFF_IDLE_MIN_RATE_FACTOR = 0.32;
+
+  function offIdleRateFactor(rpm) {
+    const aboveIdle = rpm - IDLE_RPM;
+    if (aboveIdle >= OFF_IDLE_SOFTEN_BAND_RPM) return 1;
+    const t = Math.max(0, aboveIdle) / OFF_IDLE_SOFTEN_BAND_RPM;
+    const eased = t * t * (3 - 2 * t); // smoothstep — natural build, not a linear ramp
+    return OFF_IDLE_MIN_RATE_FACTOR + (1 - OFF_IDLE_MIN_RATE_FACTOR) * eased;
+  }
 
   // ---- Shift-dip model ----
   // While a shift dip is active, RPM ignores the normal throttle-chases-
@@ -216,6 +230,19 @@ const RPMSimulator = (() => {
   let throttlePercent = 0;
   let engineOn = false;
   let revLimiting = false;
+  // Ignition-off needle collapse (see step()'s `!engineOn` branch below)
+  // is time-based, not rate-based: a single fixed rate/multiplier made
+  // low RPM (idle, ~800) reach 0 in a couple of frames — basically an
+  // instant snap, not an animation — while only looking reasonably
+  // animated from somewhere near redline. Capturing the RPM at the
+  // moment ignition cuts and easing it to 0 over a fixed wall-clock
+  // duration guarantees a visible fall every time, whether STOP ENGINE
+  // is pressed at idle or at redline.
+  let ignitionOffAt = null;
+  let rpmAtIgnitionOff = 0;
+  const IGNITION_OFF_DECAY_MS = 550; // baseline duration at the default spindown rate — see ignitionOffDurationMs()
+  const IGNITION_OFF_DECAY_MS_MIN = 320; // never faster than this — stays a visible animated fall, not a blink
+  const IGNITION_OFF_DECAY_MS_MAX = 1100; // never slower than this — stays a "lost power" collapse, not the old coast-down
   // PERFORMANCE MODE — pause freezes the whole physics loop exactly where
   // it stands (no step(), no notify()) so every gauge/readout/graph in
   // REVLAB holds its last value instead of coasting or resetting. This is
@@ -257,6 +284,25 @@ const RPMSimulator = (() => {
     if (current < target) return Math.min(target, current + maxStep);
     if (current > target) return Math.max(target, current - maxStep);
     return current;
+  }
+
+  /** How long the ignition-off needle fall should take in total, in ms —
+   *  scaled by SPINDOWN_RATE_RPM_PER_S (VEHICLE SETUP's Engine Braking,
+   *  same parameter that already tunes other decay speeds) but clamped
+   *  to a band that's always a genuinely visible animated fall: never so
+   *  fast it reads as an instant snap, never so slow it reads as the
+   *  gentle coasting-with-ignition-still-on case elsewhere in this file. */
+  function ignitionOffDurationMs() {
+    const scaled = IGNITION_OFF_DECAY_MS * (DEFAULT_SPINDOWN_RATE_RPM_PER_S / SPINDOWN_RATE_RPM_PER_S);
+    return Math.min(Math.max(scaled, IGNITION_OFF_DECAY_MS_MIN), IGNITION_OFF_DECAY_MS_MAX);
+  }
+
+  /** Ease-out cubic — starts fast, tapers into 0 rather than stopping on
+   *  a dime, so the needle's last bit of fall reads as settling rather
+   *  than an abrupt halt. */
+  function easeOutCubic(t) {
+    const inv = 1 - t;
+    return 1 - inv * inv * inv;
   }
 
   function gearAccelMultiplier() {
@@ -364,13 +410,24 @@ const RPMSimulator = (() => {
 
   function step(dtSeconds) {
     if (!engineOn) {
-      // Ignition off: the needle has no more electrical power behind it,
-      // so it collapses to 0 quickly (IGNITION_OFF_DECAY_MULTIPLIER above)
-      // rather than gliding down like a normal spindown — still a short
-      // animated fall, not an instant teleport, but fast enough to read
-      // as "the display just lost power" instead of "the engine is slowly
-      // coasting to a stop".
-      currentRpm = approach(currentRpm, 0, SPINDOWN_RATE_RPM_PER_S * IGNITION_OFF_DECAY_MULTIPLIER, dtSeconds);
+      // Ignition off: ease from the RPM captured at the moment ignition
+      // cut (rpmAtIgnitionOff) down to 0 over a fixed wall-clock duration
+      // (ignitionOffDurationMs()) — time-based, not rate-based, so idle
+      // (~800rpm) and redline (~9000rpm) both take the SAME amount of
+      // time to visibly fall, instead of a fixed rpm/s rate finishing
+      // idle in a couple of frames (looked like an instant jump to 0)
+      // while only redline actually looked animated.
+      if (ignitionOffAt === null) {
+        // Defensive fallback: engineOn went false without going through
+        // stop() (shouldn't normally happen) — snapshot right here so
+        // this frame still eases instead of free-falling with no anchor.
+        ignitionOffAt = now();
+        rpmAtIgnitionOff = currentRpm;
+      }
+      const elapsedMs = now() - ignitionOffAt;
+      const durationMs = ignitionOffDurationMs();
+      const t = Math.min(Math.max(elapsedMs / durationMs, 0), 1);
+      currentRpm = rpmAtIgnitionOff * (1 - easeOutCubic(t));
       revLimiting = false;
       startFlarePhase = null;
       return;
@@ -438,7 +495,9 @@ const RPMSimulator = (() => {
       currentRpm = targetRpm;
     } else {
       const risingRate = ACCEL_RATE_RPM_PER_S * gearAccelMultiplier();
-      const rate = targetRpm >= currentRpm ? risingRate : DECEL_RATE_RPM_PER_S;
+      const rate = targetRpm >= currentRpm
+        ? risingRate * offIdleRateFactor(currentRpm)
+        : DECEL_RATE_RPM_PER_S;
       currentRpm = approach(currentRpm, targetRpm, rate, dtSeconds);
     }
     currentRpm = Math.min(Math.max(currentRpm, 0), MAX_RPM);
@@ -503,6 +562,7 @@ const RPMSimulator = (() => {
     throttlePercent = 0;
     engagedGearIndex = 0;
     dipActive = false;
+    ignitionOffAt = null;
     // Kick off the start-up flare (see stepStartFlare) — rise above idle
     // then settle back down to IDLE_RPM (0), instead of the needle
     // jumping straight to a resting number and sticking there.
@@ -515,8 +575,13 @@ const RPMSimulator = (() => {
     throttlePercent = 0;
     dipActive = false;
     startFlarePhase = null;
-    // currentRpm is intentionally left as-is: it will coast down to 0
-    // frame by frame via step(), not reset instantly.
+    // Capture RPM + timestamp right at the moment ignition cuts — step()
+    // eases FROM this fixed snapshot TO 0 over ignitionOffDurationMs(),
+    // rather than re-deriving "how much is left to fall" from currentRpm
+    // every frame (which is what made a low starting RPM, e.g. idle,
+    // finish in a couple of frames and look like an instant snap).
+    ignitionOffAt = now();
+    rpmAtIgnitionOff = currentRpm;
   }
 
   function setThrottle(percent) {
@@ -569,6 +634,8 @@ const RPMSimulator = (() => {
     paused = false;
     lastTimestamp = null;
     coastTargetRpm = null;
+    ignitionOffAt = null;
+    rpmAtIgnitionOff = 0;
     notify();
   }
 
