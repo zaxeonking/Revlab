@@ -403,9 +403,27 @@ const RPMSimulator = (() => {
       ? Math.min(coastTargetRpm, MAX_RPM)
       : IDLE_RPM + (effectiveThrottle / 100) * (MAX_RPM - IDLE_RPM) + idleWobble;
 
-    const risingRate = ACCEL_RATE_RPM_PER_S * gearAccelMultiplier();
-    const rate = targetRpm >= currentRpm ? risingRate : DECEL_RATE_RPM_PER_S;
-    currentRpm = approach(currentRpm, targetRpm, rate, dtSeconds);
+    if (isCoasting) {
+      // BUG this fixes: while a gear is engaged and mechanically locked
+      // to the wheels, engine RPM has NO independent inertia of its own
+      // — it can only be exactly whatever the current wheel speed
+      // implies (same "exact inverse" relationship the speedometer
+      // uses, see coastTargetRpm's header comment). Rate-limiting this
+      // branch with DECEL_RATE_RPM_PER_S — the same cap used for the
+      // engine's own throttle-driven acceleration — reintroduced an
+      // independent RPM path: under a hard brake stab (which can pull
+      // speed down far faster than 1500rpm/s-equivalent), the tach
+      // couldn't keep up and kept reading well above idle for a beat
+      // after SPEED had already reached 0, instead of the two hitting
+      // zero together like a real mechanically-coupled drivetrain.
+      // Snapping straight to coastTargetRpm removes that lag entirely:
+      // RPM is always exactly what this frame's road speed implies.
+      currentRpm = targetRpm;
+    } else {
+      const risingRate = ACCEL_RATE_RPM_PER_S * gearAccelMultiplier();
+      const rate = targetRpm >= currentRpm ? risingRate : DECEL_RATE_RPM_PER_S;
+      currentRpm = approach(currentRpm, targetRpm, rate, dtSeconds);
+    }
     currentRpm = Math.min(Math.max(currentRpm, 0), MAX_RPM);
   }
 

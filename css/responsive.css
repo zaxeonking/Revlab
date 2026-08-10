@@ -98,12 +98,26 @@
   }
 
   .gear-plate {
-    width: 60px;
-    height: 76px;
+    width: 64px;
+    min-height: 76px;
+    padding: 6px 0;
+    gap: 3px;
   }
 
   .gear-plate__value {
     font-size: 1.9rem;
+  }
+
+  .gear-plate__brake {
+    width: 50px;
+  }
+
+  .gear-plate__brake-label {
+    font-size: 7px;
+  }
+
+  .gear-plate__brake-value {
+    font-size: 9px;
   }
 
   .fs-2xl,

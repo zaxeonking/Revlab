@@ -182,6 +182,13 @@
           <!-- Gear plate — embedded center-console badge docked between
                the two instruments, not tucked in a gauge corner. -->
           <div class="gear-plate" id="gearIndicator" aria-label="Current gear" data-shifting="false">
+            <div class="gear-plate__brake" id="gearPlateBrake" data-active="false" aria-label="Brake pressure" aria-live="polite">
+              <span class="gear-plate__brake-label">BRAKE</span>
+              <div class="gear-plate__brake-track">
+                <div class="gear-plate__brake-fill" id="gearPlateBrakeFill"></div>
+              </div>
+              <span class="gear-plate__brake-value" id="gearPlateBrakeValue">0%</span>
+            </div>
             <span class="gear-plate__value" id="gearValue">N</span>
             <span class="gear-plate__label">GEAR</span>
           </div>
@@ -354,6 +361,9 @@
           >
             <span class="btn--brake__label">BRAKE</span>
             <span class="btn--brake__hint">tekan &amp; tahan</span>
+            <span class="btn--brake__key">
+              <kbd class="key">S</kbd> / <kbd class="key">&darr;</kbd>
+            </span>
           </button>
 
           <button

@@ -34,6 +34,9 @@ const UIController = (() => {
       brakeButton: document.getElementById('brakeButton'),
       brakePedal: document.getElementById('brakePedal'),
       brakePedalMeterFill: document.getElementById('brakePedalMeterFill'),
+      gearPlateBrake: document.getElementById('gearPlateBrake'),
+      gearPlateBrakeFill: document.getElementById('gearPlateBrakeFill'),
+      gearPlateBrakeValue: document.getElementById('gearPlateBrakeValue'),
       startEngineBtn: document.getElementById('startEngineBtn'),
 
       systemLog: document.getElementById('systemLog'),
@@ -403,6 +406,9 @@ const UIController = (() => {
     if (els.brakePedalMeterFill) els.brakePedalMeterFill.style.width = `${rounded}%`;
     if (els.brakeButton) els.brakeButton.dataset.pressed = held ? 'true' : 'false';
     if (els.brakePedal) els.brakePedal.dataset.pressed = held ? 'true' : 'false';
+    if (els.gearPlateBrakeFill) els.gearPlateBrakeFill.style.width = `${rounded}%`;
+    if (els.gearPlateBrakeValue) els.gearPlateBrakeValue.textContent = `${rounded}%`;
+    if (els.gearPlateBrake) els.gearPlateBrake.dataset.active = rounded > 0 ? 'true' : 'false';
   }
 
   function bindSpeedUnitToggle() {
@@ -1045,24 +1051,50 @@ const UIController = (() => {
     }
   }
 
+  /** Shared start/stop logic — used by both the START ENGINE button
+   *  click and the Spacebar shortcut, so the two trigger paths can
+   *  never drift out of sync (e.g. one forgetting the AudioEngine.init()
+   *  user-gesture call). */
+  function toggleEngine() {
+    const wasOn = EngineState.getState().engineOn;
+    if (wasOn) {
+      EngineState.stopEngine();
+      logLine('STOP ENGINE — ignition off, RPM coasting down.');
+    } else {
+      // AudioContext creation MUST happen inside a real user-gesture
+      // handler — both click and keydown qualify. init() is a no-op if
+      // the graph already exists from a previous Start Engine trigger.
+      const result = AudioEngine.init();
+      setAudioStatusLabel(result.ok
+        ? 'AUDIO ENGINE: RUNNING'
+        : 'AUDIO ENGINE: UNAVAILABLE');
+      EngineState.startEngine();
+      logLine('START ENGINE — idle RPM engaged.');
+    }
+  }
+
   function bindStartButton() {
     if (!els.startEngineBtn) return;
-    els.startEngineBtn.addEventListener('click', () => {
-      const wasOn = EngineState.getState().engineOn;
-      if (wasOn) {
-        EngineState.stopEngine();
-        logLine('STOP ENGINE — ignition off, RPM coasting down.');
-      } else {
-        // AudioContext creation MUST happen inside this click handler —
-        // it's the actual user gesture. init() is a no-op if the graph
-        // already exists from a previous Start Engine press.
-        const result = AudioEngine.init();
-        setAudioStatusLabel(result.ok
-          ? 'AUDIO ENGINE: RUNNING'
-          : 'AUDIO ENGINE: UNAVAILABLE');
-        EngineState.startEngine();
-        logLine('START ENGINE — idle RPM engaged.');
-      }
+    els.startEngineBtn.addEventListener('click', toggleEngine);
+  }
+
+  /** Spacebar = START ENGINE / STOP ENGINE, desktop only (mobile has no
+   *  hardware keyboard to speak of). Ignored while focus is in a text
+   *  input/textarea/select so typing a space character in, say, a
+   *  Vehicle Setup field doesn't accidentally kill the engine — same
+   *  guard BrakeController/ThrottleController use for their key
+   *  bindings. Also ignored while focus is on any <button>: the browser
+   *  already fires a click from Space on a focused button, so handling
+   *  it again here would double-toggle (start then immediately stop).
+   *  e.repeat guarded too, so holding the key down doesn't rapid-fire. */
+  function bindStartKeyboard() {
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      if (e.repeat) return;
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+      e.preventDefault();
+      toggleEngine();
     });
   }
 
@@ -1078,6 +1110,7 @@ const UIController = (() => {
     bindGearControls();
     bindGearKeyboard();
     bindStartButton();
+    bindStartKeyboard();
     buildEngineSelect();
     buildVehicleSetupForm();
     bindVehicleSetupPanel();

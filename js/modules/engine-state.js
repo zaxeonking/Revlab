@@ -1110,20 +1110,18 @@ const EngineState = (() => {
    *  matching how a real sequential shifter behaves. Also dips RPM, same
    *  as shiftUp().
    *
-   *  Safety check: before committing, predicts the RPM the engine would
-   *  land at in the lower gear (predictShiftRpm — same ratio formula
-   *  the actual dip uses) and refuses the downshift outright if that
-   *  would land above redline, rather than letting the driver bang the
-   *  engine straight into the limiter. This mirrors real synchro/rev-
-   *  matching protection: a downshift that would over-rev the engine
-   *  just doesn't engage. */
+   *  No rev-matching safety check: unlike auto mode, a manual downshift
+   *  here always engages regardless of what RPM it would land at — the
+   *  driver is free to bang it into whatever gear they want, same as
+   *  yanking a real sequential shifter with no ECU/synchro protection.
+   *  If that lands above redline, the rev-limiter (a separate system in
+   *  RPMSimulator) just cuts in afterward like it would for any other
+   *  over-rev — this function itself no longer refuses the shift. */
   function shiftDown() {
     if (!state.engineOn || isShiftLocked()) return getState();
     if (gearIndex <= 1) return getState();
     const fromGearIndex = gearIndex;
     const toGearIndex = gearIndex - 1;
-    const predictedRpm = predictShiftRpm(state.rpm, fromGearIndex, toGearIndex);
-    if (predictedRpm !== null && predictedRpm > REDLINE_RPM) return getState();
     gearIndex = toGearIndex;
     markGearEntered();
     engageShiftLock();

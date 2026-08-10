@@ -428,12 +428,13 @@
 .gear-plate {
   flex: 0 0 auto;
   width: 84px;
-  height: 96px;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
+  padding: 8px 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-1);
   background:
@@ -456,6 +457,57 @@
   font-size: 9px;
   letter-spacing: var(--tracking-widest);
   color: var(--text-2);
+}
+
+/* Brake readout docked above the GEAR value, inside the same plate —
+   lets the driver see brake pressure without hunting for it in the
+   telemetry panel, right next to the gear they're braking in. Red
+   accent throughout so it reads as "brake", not "gear" or "throttle",
+   at a glance — same color language as .btn--brake. */
+.gear-plate__brake {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 64px;
+}
+
+.gear-plate__brake-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: var(--tracking-widest);
+  color: var(--text-2);
+}
+
+.gear-plate__brake-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-recess);
+  overflow: hidden;
+}
+
+.gear-plate__brake-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-red-dim);
+  transition: width 60ms linear;
+}
+
+.gear-plate__brake-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.gear-plate__brake[data-active="true"] .gear-plate__brake-fill {
+  background: var(--accent-red);
+  box-shadow: 0 0 6px rgba(255, 61, 61, 0.6);
+}
+
+.gear-plate__brake[data-active="true"] .gear-plate__brake-value {
+  color: var(--accent-red);
 }
 
 /* Brief pulse while the gearbox is "locked" mid-shift (see
@@ -853,6 +905,19 @@
 }
 
 .btn--brake[data-pressed="true"] .btn--brake__hint {
+  color: var(--bg-1);
+}
+
+.btn--brake__key {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.btn--brake[data-pressed="true"] .btn--brake__key {
   color: var(--bg-1);
 }
 
