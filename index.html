@@ -234,6 +234,10 @@
             <span class="telemetry-item__value telemetry-item__value--mono" id="throttleReadout">0%</span>
           </li>
           <li class="telemetry-item">
+            <span class="telemetry-item__label">BRAKE</span>
+            <span class="telemetry-item__value telemetry-item__value--mono" id="brakeReadout">0%</span>
+          </li>
+          <li class="telemetry-item">
             <span class="telemetry-item__label">ENGINE TEMP</span>
             <span class="telemetry-item__value telemetry-item__value--mono" id="tempReadout">24 <small>°C</small></span>
           </li>
@@ -340,16 +344,29 @@
       </div>
 
       <div class="controls__group controls__group--action">
-        <button
-          id="throttleButton"
-          class="btn btn--throttle"
-          type="button"
-          data-pressed="false"
-          aria-label="Throttle — tekan dan tahan untuk menambah RPM"
-        >
-          <span class="btn--throttle__label">THROTTLE</span>
-          <span class="btn--throttle__hint">tekan &amp; tahan</span>
-        </button>
+        <div class="controls__pedals">
+          <button
+            id="brakeButton"
+            class="btn btn--brake"
+            type="button"
+            data-pressed="false"
+            aria-label="Rem — tekan dan tahan untuk mengurangi kecepatan"
+          >
+            <span class="btn--brake__label">BRAKE</span>
+            <span class="btn--brake__hint">tekan &amp; tahan</span>
+          </button>
+
+          <button
+            id="throttleButton"
+            class="btn btn--throttle"
+            type="button"
+            data-pressed="false"
+            aria-label="Throttle — tekan dan tahan untuk menambah RPM"
+          >
+            <span class="btn--throttle__label">THROTTLE</span>
+            <span class="btn--throttle__hint">tekan &amp; tahan</span>
+          </button>
+        </div>
 
         <p class="controls__note" id="controlsNote">Audio mesin belum diimplementasikan — START/STOP sekarang ada di bawah display RPM.</p>
       </div>
@@ -377,6 +394,25 @@
       <span class="throttle-pedal__label">GAS</span>
       <div class="throttle-pedal__meter" aria-hidden="true">
         <div class="throttle-pedal__meter-fill" id="throttlePedalMeterFill"></div>
+      </div>
+    </button>
+
+    <!-- ============ MOBILE BRAKE PEDAL ============ -->
+    <!-- Same fixed, thumb-sized press-and-hold pedal as the gas pedal
+         above, mirrored to the OPPOSITE (bottom-left) corner of the
+         screen — same reasoning a real car's foot-well layout follows,
+         so the two pedals can never be confused for one another and a
+         thumb reaching for one never risks landing on the other. -->
+    <button
+      id="brakePedal"
+      class="throttle-pedal brake-pedal"
+      type="button"
+      data-pressed="false"
+      aria-label="Pedal rem — tekan dan tahan untuk mengurangi kecepatan"
+    >
+      <span class="throttle-pedal__label">BRAKE</span>
+      <div class="throttle-pedal__meter" aria-hidden="true">
+        <div class="throttle-pedal__meter-fill" id="brakePedalMeterFill"></div>
       </div>
     </button>
 
@@ -725,6 +761,7 @@
   <script src="js/modules/audio-engine.js"></script>
   <script src="js/modules/sound-lab.js"></script>
   <script src="js/modules/throttle-controller.js"></script>
+  <script src="js/modules/brake-controller.js"></script>
   <script src="js/modules/ui-controller.js"></script>
   <script src="js/modules/performance-mode.js"></script>
   <script src="js/modules/acceleration-mode.js"></script>

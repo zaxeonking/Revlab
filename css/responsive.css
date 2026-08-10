@@ -135,6 +135,10 @@
     display: flex;
   }
 
+  .brake-pedal {
+    display: flex;
+  }
+
   .mobile-shifter {
     display: flex;
   }

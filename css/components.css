@@ -811,6 +811,51 @@
   color: var(--bg-1);
 }
 
+/* ---------- Desktop brake button (press & hold) ---------- */
+/* Same structure/behavior as .btn--throttle above (BrakeController uses
+   the identical press/hold pattern ThrottleController does) — styled in
+   the red/danger accent instead of cyan so gas and brake are never
+   visually ambiguous at a glance, same as a real dashboard. */
+.btn--brake {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-color: var(--accent-red-dim);
+  color: var(--accent-red);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none; /* let BrakeController's Pointer Events own this element */
+}
+
+.btn--brake__label {
+  font-size: var(--fs-md);
+}
+
+.btn--brake__hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+.btn--brake:not(:disabled):hover {
+  background: var(--bg-3);
+  border-color: var(--accent-red);
+}
+
+.btn--brake[data-pressed="true"] {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: var(--bg-0);
+  box-shadow: var(--glow-red);
+}
+
+.btn--brake[data-pressed="true"] .btn--brake__hint {
+  color: var(--bg-1);
+}
+
 /* ---------- Mobile virtual throttle pedal ---------- */
 /* Hidden by default (desktop); responsive.css turns this on for
    touch/mobile viewports. Fixed to the bottom-right edge, thumb-sized,
@@ -865,6 +910,35 @@
   border-color: var(--accent-cyan);
   background: radial-gradient(circle at 35% 30%, var(--accent-cyan-dim), var(--bg-recess) 75%);
   box-shadow: var(--glow-cyan);
+  transform: scale(0.96);
+}
+
+/* ---------- Mobile virtual brake pedal ---------- */
+/* Same fixed, circular pedal as .throttle-pedal, mirrored to the
+   bottom-LEFT corner (throttle-pedal is bottom-right) and re-themed
+   red/danger — deliberately reuses .throttle-pedal's base layout rules
+   via the shared class on the element (see index.html) so the two
+   pedals stay pixel-identical in size/shape, only position + color
+   differ here. */
+.brake-pedal {
+  left: var(--sp-4);
+  right: auto;
+  border-color: var(--accent-red-dim);
+  background: radial-gradient(circle at 35% 30%, var(--bg-3), var(--bg-recess) 70%);
+}
+
+.brake-pedal .throttle-pedal__label {
+  color: var(--accent-red);
+}
+
+.brake-pedal .throttle-pedal__meter-fill {
+  background: linear-gradient(90deg, var(--accent-red), var(--accent-amber));
+}
+
+.brake-pedal[data-pressed="true"] {
+  border-color: var(--accent-red);
+  background: radial-gradient(circle at 35% 30%, var(--accent-red-dim), var(--bg-recess) 75%);
+  box-shadow: var(--glow-red);
   transform: scale(0.96);
 }
 

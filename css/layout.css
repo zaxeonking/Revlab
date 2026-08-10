@@ -83,6 +83,13 @@
   text-align: center;
 }
 
+.controls__pedals {
+  display: flex;
+  flex-direction: row;
+  gap: var(--sp-3);
+  align-items: stretch;
+}
+
 .controls__group--log {
   min-width: 0;
 }

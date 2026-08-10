@@ -30,6 +30,10 @@ const UIController = (() => {
       throttleIndicatorFill: document.getElementById('throttleIndicatorFill'),
       throttleIndicatorValue: document.getElementById('throttleIndicatorValue'),
       throttlePedalMeterFill: document.getElementById('throttlePedalMeterFill'),
+      brakeReadout: document.getElementById('brakeReadout'),
+      brakeButton: document.getElementById('brakeButton'),
+      brakePedal: document.getElementById('brakePedal'),
+      brakePedalMeterFill: document.getElementById('brakePedalMeterFill'),
       startEngineBtn: document.getElementById('startEngineBtn'),
 
       systemLog: document.getElementById('systemLog'),
@@ -313,6 +317,7 @@ const UIController = (() => {
     if (els.gearModeHint) els.gearModeHint.textContent = GEAR_MODE_HINTS[state.gearMode] || '';
 
     if (els.throttleReadout) els.throttleReadout.textContent = `${Math.round(state.throttlePercent)}%`;
+    if (els.brakeReadout) els.brakeReadout.textContent = `${Math.round(state.brakePercent || 0)}%`;
     if (els.throttleSlider) {
       els.throttleSlider.disabled = !state.engineOn;
       // Keep slider in sync if throttle was changed by something other
@@ -386,6 +391,18 @@ const UIController = (() => {
     if (els.throttlePedalMeterFill) els.throttlePedalMeterFill.style.width = `${rounded}%`;
     if (els.throttleButton) els.throttleButton.dataset.pressed = held ? 'true' : 'false';
     if (els.throttlePedal) els.throttlePedal.dataset.pressed = held ? 'true' : 'false';
+  }
+
+  /**
+   * Same live-off-BrakeController pattern as renderThrottleIndicator()
+   * above, just for the brake button/pedal — see BrakeController.subscribe()
+   * wiring in init() below.
+   */
+  function renderBrakeIndicator(percent, held) {
+    const rounded = Math.round(percent);
+    if (els.brakePedalMeterFill) els.brakePedalMeterFill.style.width = `${rounded}%`;
+    if (els.brakeButton) els.brakeButton.dataset.pressed = held ? 'true' : 'false';
+    if (els.brakePedal) els.brakePedal.dataset.pressed = held ? 'true' : 'false';
   }
 
   function bindSpeedUnitToggle() {
@@ -1103,6 +1120,8 @@ const UIController = (() => {
     // every frame, so ui-controller only needs to render what it reports.
     ThrottleController.init(els);
     ThrottleController.subscribe((percent, held) => renderThrottleIndicator(percent, held));
+    BrakeController.init(els);
+    BrakeController.subscribe((percent, held) => renderBrakeIndicator(percent, held));
 
     logLine('UI controller ready — bound to EngineState + RPMSimulator.');
     logLine('Throttle: keyboard (W / ↑), tombol UI, dan pedal mobile aktif.');

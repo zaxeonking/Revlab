@@ -504,6 +504,7 @@ const EngineState = (() => {
     rpmK: 0,
     rpm: 0,
     throttlePercent: 0,
+    brakePercent: 0,
     gear: 'N',
     gearIndex: 0,
     gearMode: 'auto',      // 'auto' | 'manual'
@@ -581,6 +582,26 @@ const EngineState = (() => {
   // braking scrubs speed off faster while coasting in gear, same
   // parameter that already controls how fast RPM itself falls.
   let COAST_DECEL_KMH_PER_S = 5.5;
+
+  // ---- Brake pedal ------------------------------------------------------
+  // A foot brake is a genuinely separate control from "no throttle" —
+  // coasting (above) models drag/engine-braking, which is gentle and
+  // gear/RPM-dependent; the brake pedal is the driver actively asking to
+  // shed speed, hard, regardless of gear or RPM. brakePercent (0–100) is
+  // set by BrakeController (brake-controller.js) the same way
+  // ThrottleController drives setThrottle() — a press/hold ramp, not an
+  // absolute per-frame value. Braking decelerates road speed directly,
+  // on top of whatever coasting decel is already happening (see the
+  // targetSpeedKmh branch below), and RPM keeps following that falling
+  // speed through the SAME coastTargetRpm coupling coasting already
+  // uses, so squeezing the brake in gear reads as real engine braking
+  // (RPM dropping as the car slows) rather than the tach just going
+  // slack. Pressing the brake also cuts the throttle to 0 immediately
+  // (see setBrake()) — a real driver's foot can't floor both pedals at
+  // once, and letting throttle keep fighting the brake target would
+  // otherwise make brakePercent partially cancel itself out.
+  const BRAKE_DECEL_KMH_PER_S_MAX = 46; // ~1.0g-ish full-stab deceleration feel
+  let brakePercent = 0;
 
   function approachSpeed(current, target, dtSeconds) {
     const maxStep = SPEED_DISPLAY_RATE_KMH_PER_S * dtSeconds;
@@ -811,6 +832,7 @@ const EngineState = (() => {
     state.rpm = frame.rpm;
     state.rpmK = frame.rpmK;
     state.throttlePercent = frame.throttlePercent;
+    state.brakePercent = brakePercent;
     state.revLimiting = frame.revLimiting;
     state.inRedline = inRedline;
     state.paused = !!frame.paused;
@@ -880,15 +902,17 @@ const EngineState = (() => {
     lastSpeedTs = nowTs;
 
     const isCoastingSpeed = frame.engineOn && gearIndex > 0 && frame.throttlePercent < COAST_THROTTLE_THRESHOLD;
+    const brakeDecelKmhPerS = (brakePercent / 100) * BRAKE_DECEL_KMH_PER_S_MAX;
 
     let targetSpeedKmh = 0;
     if (frame.engineOn && gearIndex > 0) {
       if (isCoastingSpeed) {
-        // See COAST_DECEL_KMH_PER_S comment above — decay road speed
-        // directly instead of re-deriving it from RPM, so coasting
-        // actually loses speed over time instead of RPM/speed just
-        // canonically implying each other forever.
-        targetSpeedKmh = Math.max(0, displaySpeedKmh - COAST_DECEL_KMH_PER_S * dtSeconds);
+        // See COAST_DECEL_KMH_PER_S / BRAKE_DECEL_KMH_PER_S_MAX comments
+        // above — decay road speed directly instead of re-deriving it
+        // from RPM, so coasting (and now braking on top of it) actually
+        // loses speed over time instead of RPM/speed just canonically
+        // implying each other forever.
+        targetSpeedKmh = Math.max(0, displaySpeedKmh - (COAST_DECEL_KMH_PER_S + brakeDecelKmhPerS) * dtSeconds);
       } else {
         // Driving: governor (VEHICLE SETUP's Top Speed) caps the target
         // regardless of what the raw gear-ratio math would otherwise
@@ -896,6 +920,12 @@ const EngineState = (() => {
         targetSpeedKmh = Math.min(Gearbox.speedForRpm(frame.rpm, gearIndex), MAX_SPEED_KMH);
       }
     }
+    // Note: gearIndex === 0 (neutral) snaps straight to 0 a few lines
+    // below regardless of targetSpeedKmh here — same "wheels physically
+    // disconnected" reasoning that already applies to engine-off, so
+    // there's no separate neutral-braking case to handle: the brake
+    // pedal's effect is on ROAD speed while a gear is actually engaged,
+    // same as the coasting-decel branch above it.
 
     // ---- TURBO / BOOST — see stepBoost() above for the full model.
     // Same dtSeconds this tick's speed smoothing uses, so boost and
@@ -995,6 +1025,7 @@ const EngineState = (() => {
     gearEnteredAt = 0;
     displaySpeedKmh = 0;
     lastSpeedTs = null;
+    brakePercent = 0;
     spoolFraction = 0;
     boostBar = 0;
     prevThrottleFracForBoost = 0;
@@ -1006,6 +1037,7 @@ const EngineState = (() => {
       rpmK: 0,
       rpm: 0,
       throttlePercent: 0,
+      brakePercent: 0,
       gear: 'N',
       gearIndex: 0,
       gearMode: 'auto',
@@ -1030,6 +1062,18 @@ const EngineState = (() => {
 
   function setThrottle(percent) {
     RPMSimulator.setThrottle(percent);
+    return getState();
+  }
+
+  /** Driven by BrakeController's press/hold ramp (see BRAKE_DECEL_KMH_PER_S_MAX
+   *  comment above) — 0–100, how hard the brake pedal is currently pressed.
+   *  Pressing the brake at all also cuts throttle to 0 immediately: a real
+   *  driver's foot can't floor both pedals together, and leaving throttle
+   *  free to keep pushing speed up would otherwise fight the brake's
+   *  deceleration target every frame. */
+  function setBrake(percent) {
+    brakePercent = clamp(Number(percent) || 0, 0, 100);
+    if (brakePercent > 0) RPMSimulator.setThrottle(0);
     return getState();
   }
 
@@ -1230,6 +1274,7 @@ const EngineState = (() => {
     resumeSimulation,
     resetSimulation,
     setThrottle,
+    setBrake,
     setGearMode,
     shiftUp,
     shiftDown,

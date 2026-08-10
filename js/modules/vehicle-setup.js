@@ -147,6 +147,58 @@ const VehicleSetup = (() => {
   };
   const GEAR_COUNT = 6;
 
+  // Minimum ratio STEP enforced between every pair of consecutive gears
+  // (gear[i] must be at least this many times bigger than gear[i+1]).
+  // Without this, nothing stopped e.g. 2nd/3rd/4th from being hand-typed
+  // close enough together that a shift barely changes RPM at all — the
+  // ratio math (newRPM = currentRPM × newRatio/oldRatio) is completely
+  // correct either way, but a ~1–2% gap between gears reads as "nothing
+  // happened" on the tach and can even trigger AUTO's upshift and
+  // downshift thresholds almost back-to-back. 0.08 (8%) is deliberately
+  // looser than the smallest gap in the STOCK defaults (1st→6th run
+  // ~47%/36%/26%/17%/17%, so even the closest pair — 5th→6th — has
+  // roughly double this margin) specifically so the stock ratios and any
+  // reasonable close-ratio gearbox a driver dials in are never touched;
+  // it only ever kicks in once gears are pushed genuinely too close.
+  const MIN_GEAR_RATIO_STEP_FRACTION = 0.08;
+
+  /** Cascades gear[i] > gear[i+1] × (1 + MIN_GEAR_RATIO_STEP_FRACTION)
+   *  outward from changedIndex in both directions, nudging the OTHER
+   *  slots apart (same "adjust the neighbors, don't reject the edit"
+   *  pattern enforceRpmOrdering() uses above) rather than rejecting a
+   *  gear ratio edit outright. Each nudge is clamped back into
+   *  GEAR_RATIO_SPEC's own min/max, so a request to spread gears apart
+   *  can never push a ratio out of its valid range — it just spreads as
+   *  far as it can within that range. Returns a message if it had to
+   *  intervene, or '' if the ratios were already properly spaced. */
+  function enforceGearRatioSpacing(changedIndex) {
+    const step = 1 + MIN_GEAR_RATIO_STEP_FRACTION;
+    let touched = false;
+
+    // Higher gears (rightward from the edit) must each be far enough
+    // BELOW the gear to their left.
+    for (let i = Math.max(changedIndex, 0) + 1; i < GEAR_COUNT; i += 1) {
+      const maxAllowed = values.gearRatios[i - 1] / step;
+      if (values.gearRatios[i] > maxAllowed) {
+        touched = true;
+        values.gearRatios[i] = clampToSpec(GEAR_RATIO_SPEC, maxAllowed).value;
+      }
+    }
+    // Lower gears (leftward from the edit) must each be far enough
+    // ABOVE the gear to their right.
+    for (let i = Math.min(changedIndex, GEAR_COUNT - 1) - 1; i >= 0; i -= 1) {
+      const minAllowed = values.gearRatios[i + 1] * step;
+      if (values.gearRatios[i] < minAllowed) {
+        touched = true;
+        values.gearRatios[i] = clampToSpec(GEAR_RATIO_SPEC, minAllowed).value;
+      }
+    }
+
+    return touched
+      ? 'Gigi lain disesuaikan agar tetap punya jarak rasio yang wajar (tidak berdempetan).'
+      : '';
+  }
+
   // Minimum gap enforced between idle/redline/max so the derived gear
   // table in EngineState.buildGears() always has room to work with —
   // without this a user could set redline = max and produce a gearbox
@@ -287,10 +339,11 @@ const VehicleSetup = (() => {
     }
     const result = clampToSpec(GEAR_RATIO_SPEC, rawValue);
     values.gearRatios[index] = result.value;
+    const spacingMessage = enforceGearRatioSpacing(index);
     markCustom();
     applyToSimulation();
     notify({ reason: 'setGearRatio', index });
-    return result;
+    return { ...result, message: spacingMessage || result.message };
   }
 
   /** Validates + stores the induction-type enum (engine configuration).
@@ -340,6 +393,11 @@ const VehicleSetup = (() => {
           values.gearRatios[index] = clampToSpec(GEAR_RATIO_SPEC, ratio).value;
         }
       });
+      // Safety net in case a preset's own data was ever hand-edited with
+      // gears too close together — same guard setGearRatio() runs on a
+      // manual edit, just swept across the whole preset in one go
+      // (changedIndex -1 so every pair from 1st→6th gets checked).
+      enforceGearRatioSpacing(-1);
     }
 
     if (preset.inductionType) {
