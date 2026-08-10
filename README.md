@@ -543,10 +543,13 @@ setiap perubahan langsung diterapkan ke simulasi — tidak ada tombol
 
 Pada nilai default, kalkulasi di atas menghasilkan angka yang **identik**
 dengan konstanta hasil tuning manual sebelumnya (idle 800, redline 7500,
-max 9000, rasio gigi 3.850/2.615/1.929/1.529/1.276/1.061, final drive
-3.900, radius roda 31.5cm ≈ keliling 1.98m, dst) — jadi menambahkan panel
-ini tidak mengubah perilaku default simulasi, hanya membuatnya bisa
-diubah.
+max 9000, rasio gigi 3.850/2.615/1.929/1.529/1.276/1.061, radius roda
+31.5cm ≈ keliling 1.98m, dst), KECUALI final drive: diretune dari 3.900 ke
+3.565 supaya top speed yang benar-benar tercapai di gigi 6 pada max RPM
+(9000) pas berada di ~260 km/h — sebelumnya 3.900 hanya mentok di
+±237.6 km/h padahal dial speedometer & governor TOP SPEED default-nya
+260 km/h, jadi jarum RPM bisa nyaris mentok max sementara jarum speed
+masih jauh dari ujung dial-nya sendiri.
 
 ### Validasi
 

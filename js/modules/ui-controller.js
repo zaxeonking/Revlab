@@ -64,6 +64,9 @@ const UIController = (() => {
       shiftDownBtn: document.getElementById('shiftDownBtn'),
       gearModeHint: document.getElementById('gearModeHint'),
 
+      turboToggleBtn: document.getElementById('turboToggleBtn'),
+      turboToggleHint: document.getElementById('turboToggleHint'),
+
       mobileShifter: document.getElementById('mobileShifter'),
       mobileGearModeBtn: document.getElementById('mobileGearModeBtn'),
       mobileShiftUpBtn: document.getElementById('mobileShiftUpBtn'),
@@ -372,6 +375,22 @@ const UIController = (() => {
       els.turboSpoolFill.style.width = `${spoolPct}%`;
     }
 
+    if (els.turboToggleBtn) {
+      const available = state.turboAvailable !== false; // undefined → treat as available
+      els.turboToggleBtn.disabled = !available;
+      els.turboToggleBtn.setAttribute('aria-pressed', state.turboEnabled ? 'true' : 'false');
+      els.turboToggleBtn.textContent = !available
+        ? 'NO TURBO'
+        : (state.turboEnabled ? 'TURBO ON' : 'TURBO OFF');
+      if (els.turboToggleHint) {
+        els.turboToggleHint.textContent = !available
+          ? 'Kendaraan ini naturally aspirated — tidak ada turbo/boost untuk dinyalakan.'
+          : (state.turboEnabled
+            ? 'Turbo aktif — boost dibangun otomatis sesuai throttle & RPM.'
+            : 'Turbo dimatikan — tidak ada boost sampai dinyalakan lagi.');
+      }
+    }
+
     if (els.gaugeCaption) {
       els.gaugeCaption.textContent = CAPTIONS[state.status] || CAPTIONS.off;
     }
@@ -496,6 +515,21 @@ const UIController = (() => {
         if (after !== before) logLine(`SHIFT DOWN — gigi ${before} → ${after}.`);
       });
     }
+  }
+
+  /**
+   * TURBO ON/OFF switch, above the transmission controls — manual
+   * override for EngineState's automatic boost model (see
+   * EngineState.setTurboEnabled()/stepBoost()). Works regardless of
+   * engine state; it just has nothing to show until the engine's
+   * actually running and building boost.
+   */
+  function bindTurboToggle() {
+    if (!els.turboToggleBtn) return;
+    els.turboToggleBtn.addEventListener('click', () => {
+      const next = EngineState.toggleTurbo();
+      logLine(next.turboEnabled ? 'TURBO → ON.' : 'TURBO → OFF — boost dimatikan.');
+    });
   }
 
   /**
@@ -1154,6 +1188,7 @@ const UIController = (() => {
     bindThrottleSlider();
     bindSpeedUnitToggle();
     bindGearControls();
+    bindTurboToggle();
     bindGearKeyboard();
     bindStartButton();
     bindStartKeyboard();

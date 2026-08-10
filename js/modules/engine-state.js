@@ -378,6 +378,16 @@ const EngineState = (() => {
   const BLOWOFF_COOLDOWN_MS = 350;     // minimum gap between two blow-off events, so one hard lift can't fire it twice off two consecutive frames
   let INDUCTION_TYPE = 'turbo';        // 'na' | 'turbo' | 'twin' | 'super'
   let turboSizeFrac = 0.55;            // 0..1, from VEHICLE SETUP's turboSize (%)
+  // Manual TURBO ON/OFF switch (the button above the transmission
+  // controls in the UI) — separate from INDUCTION_TYPE, which is the
+  // HARDWARE the current vehicle has (set by VEHICLE SETUP). A turbo/
+  // twin/super car still only actually builds boost when this is true;
+  // flipping it off vents/spools the turbine down to nothing and holds
+  // it there, same as stepBoost() already does for an 'na' engine or a
+  // dead engine — see the guard at the top of stepBoost() below. Starts
+  // true so the stock behavior (boost always available on a turbo car)
+  // is unchanged until the driver actually reaches for the switch.
+  let turboEnabled = true;
 
   let spoolFraction = 0;
   let boostBar = 0;
@@ -429,7 +439,7 @@ const EngineState = (() => {
    *  RPM/speed pattern elsewhere in this file: no Math.random(), driven
    *  only by throttle/RPM/dtSeconds/engine configuration. */
   function stepBoost(throttleFraction, rpmFraction, dtSeconds, engineOn) {
-    if (!engineOn || INDUCTION_TYPE === 'na') {
+    if (!engineOn || INDUCTION_TYPE === 'na' || !turboEnabled) {
       spoolFraction = approachClamped(spoolFraction, 0, spoolRate(false), dtSeconds);
       boostBar = 0;
       prevThrottleFracForBoost = throttleFraction;
@@ -518,6 +528,12 @@ const EngineState = (() => {
     maxBoostBar: MAX_BOOST_BAR,
     turboSpoolFraction: 0,
     inductionType: INDUCTION_TYPE,
+    turboEnabled,
+    // Whether the current vehicle even HAS forced induction to switch —
+    // 'na' cars have no turbo/supercharger hardware at all, so the UI
+    // button should read as unavailable rather than a switch with
+    // nothing behind it.
+    turboAvailable: INDUCTION_TYPE !== 'na',
     blowOffEventId: 0,
     gearShiftEventId: 0,
     inRedline: false,
@@ -583,6 +599,16 @@ const EngineState = (() => {
   // braking scrubs speed off faster while coasting in gear, same
   // parameter that already controls how fast RPM itself falls.
   let COAST_DECEL_KMH_PER_S = 5.5;
+
+  // Ignition truly off (STOP ENGINE) is a different case from coasting-
+  // in-gear above: the speedo readout itself has lost its power source,
+  // so it should collapse fast — same "gauge losing power" reasoning as
+  // RPMSimulator's IGNITION_OFF_DECAY_MULTIPLIER. Deliberately NOT scaled
+  // by VEHICLE SETUP's Engine Braking (that parameter is about the
+  // engine's own braking effect while it's still running, not about how
+  // fast a dead display falls) — this stays a fixed, fast rate so it's
+  // always quick regardless of vehicle setup.
+  const IGNITION_OFF_SPEED_DECAY_KMH_PER_S = 85;
 
   // ---- Brake pedal ------------------------------------------------------
   // A foot brake is a genuinely separate control from "no throttle" —
@@ -940,25 +966,28 @@ const EngineState = (() => {
     state.boostBar = Math.round(boostBar * 100) / 100;
     state.turboSpoolFraction = Math.round(spoolFraction * 1000) / 1000;
     state.inductionType = INDUCTION_TYPE;
+    state.turboEnabled = turboEnabled;
+    state.turboAvailable = INDUCTION_TYPE !== 'na';
     state.blowOffEventId = blowOffEventId;
     state.gearShiftEventId = shiftEventId;
 
     if (!frame.engineOn) {
-      // Engine OFF: no more combustion/engine-braking, but the car
-      // doesn't teleport to a dead stop — it keeps rolling and sheds
-      // speed to rolling resistance/aero drag, same physical coast a
-      // real car does with the key off. Reuses the same
-      // COAST_DECEL_KMH_PER_S rate in-gear coasting already uses; the
-      // brake pedal (still mechanical, not ignition-gated — see
-      // BrakeController) adds on top exactly like it does while
-      // driving, so braking to a stop right after STOP ENGINE still
-      // works and still reads as a real deceleration curve, not a jump.
+      // Engine OFF: the speedometer display doesn't teleport straight to
+      // 0 (that read as broken — see BUG note below), but it also
+      // shouldn't take many seconds to get there: with ignition off the
+      // gauge has lost its power source, so it falls fast
+      // (IGNITION_OFF_SPEED_DECAY_KMH_PER_S) rather than at the gentle
+      // COAST_DECEL_KMH_PER_S rate used for in-gear engine-braking
+      // coasting above. The brake pedal (still mechanical, not
+      // ignition-gated — see BrakeController) adds on top exactly like
+      // it does while driving, so braking right after STOP ENGINE
+      // reaches 0 even quicker.
       // BUG this fixes: STOP ENGINE used to snap displaySpeedKmh straight
       // to 0 the same instant as neutral, so the speedometer teleported
       // to 0 while the RPM/audio were still winding down — visually
       // implying the car stopped dead the moment the key turned, not
       // that it was still coasting on its own momentum.
-      displaySpeedKmh = Math.max(0, displaySpeedKmh - (COAST_DECEL_KMH_PER_S + brakeDecelKmhPerS) * dtSeconds);
+      displaySpeedKmh = Math.max(0, displaySpeedKmh - (IGNITION_OFF_SPEED_DECAY_KMH_PER_S + brakeDecelKmhPerS) * dtSeconds);
     } else if (gearIndex === 0) {
       // No drivetrain connection at all — the gearbox is in neutral
       // while the engine keeps running. Snap straight to 0 rather than
@@ -1012,6 +1041,24 @@ const EngineState = (() => {
   function stopEngine() {
     RPMSimulator.stop();
     return getState();
+  }
+
+  /** TURBO ON/OFF switch — the button above the transmission controls.
+   *  Forced induction no longer builds boost automatically just because
+   *  the vehicle has turbo/twin/super hardware; the driver has to
+   *  actually have this on too (see stepBoost() guard above). Flipping
+   *  it off doesn't require the engine to be running — same as a real
+   *  boost-control solenoid switch, it just has no effect to show until
+   *  the engine's actually turning. */
+  function setTurboEnabled(enabled) {
+    turboEnabled = !!enabled;
+    state.turboEnabled = turboEnabled;
+    notify();
+    return getState();
+  }
+
+  function toggleTurbo() {
+    return setTurboEnabled(!turboEnabled);
   }
 
   /** PERFORMANCE MODE — Pause. Freezes RPMSimulator's loop (see
@@ -1258,6 +1305,7 @@ const EngineState = (() => {
     state.maxSpeedKmh = MAX_SPEED_KMH;
     state.maxBoostBar = MAX_BOOST_BAR;
     state.inductionType = INDUCTION_TYPE;
+    state.turboAvailable = INDUCTION_TYPE !== 'na';
 
     // ---- Sound character (PRESET SELECTOR / VehicleSetup.soundCharacter)
     // → AudioEngine's 9-layer mix. Same "reach the module directly, don't
@@ -1298,6 +1346,8 @@ const EngineState = (() => {
     setGearMode,
     shiftUp,
     shiftDown,
+    setTurboEnabled,
+    toggleTurbo,
     applyVehicleSetup,
     getDrivetrainSpec,
     getTorqueCurve: computeCurve,

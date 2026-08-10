@@ -129,7 +129,7 @@ const VehicleSetup = (() => {
     },
     finalDrive: {
       label: 'FINAL DRIVE', unit: ': 1', group: 'drivetrain',
-      min: 2.0, max: 6.0, step: 0.01, decimals: 3, default: 3.900,
+      min: 2.0, max: 6.0, step: 0.01, decimals: 3, default: 3.565,
     },
     wheelRadiusCm: {
       label: 'WHEEL RADIUS', unit: 'CM', group: 'drivetrain',

@@ -54,7 +54,17 @@ const Gearbox = (() => {
   // DEFAULT_* is kept so VehicleSetup / a "Reset Setup" action always
   // has a known-good baseline to fall back to.
   const DEFAULT_GEAR_RATIOS = [null, 3.850, 2.615, 1.929, 1.529, 1.276, 1.061];
-  const DEFAULT_FINAL_DRIVE_RATIO = 3.900;
+  // Retuned from 3.900 → 3.565: at the DEFAULT engine profile (maxRpm
+  // 9000, redline 7500) the old 3.900 final drive topped out at only
+  // ~237.6 km/h in 6th at max RPM — well short of the 260 km/h dial
+  // face / TOP SPEED governor default, so the tach could sit almost
+  // pinned at its own max while the speedo needle still had a big,
+  // permanently-unreachable arc left on its face. 3.565 makes max RPM
+  // in 6th land almost exactly on 260 km/h, so the two gauges' "fully
+  // deflected" points now actually correspond to the same physical
+  // moment, same as a real car's dial is calibrated against its actual
+  // top speed.
+  const DEFAULT_FINAL_DRIVE_RATIO = 3.565;
   const DEFAULT_WHEEL_RADIUS_CM = 31.5; // → circumference ≈ 1.98m (205/55R16-ish)
 
   let GEAR_RATIOS = DEFAULT_GEAR_RATIOS.slice();

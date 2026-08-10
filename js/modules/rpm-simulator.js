@@ -96,6 +96,18 @@ const RPMSimulator = (() => {
   let DECEL_RATE_RPM_PER_S = DEFAULT_DECEL_RATE_RPM_PER_S;
   let SPINDOWN_RATE_RPM_PER_S = DEFAULT_SPINDOWN_RATE_RPM_PER_S;
 
+  // The needle isn't just "coasting down" once ignition is truly off — the
+  // gauge itself loses its power source, so the reading should collapse
+  // fast, not glide down over multiple seconds at the same tunable
+  // engine-braking-derived SPINDOWN_RATE_RPM_PER_S above (that rate is
+  // meant for how the engine itself spins down, and stays driver-tunable
+  // via VEHICLE SETUP's Engine Braking field). This multiplier is applied
+  // ONLY in the ignition-off branch of step() below, on top of whatever
+  // SPINDOWN_RATE_RPM_PER_S currently is, so a higher Engine Braking
+  // setting still spins down a bit faster than a lower one, but the
+  // baseline is always a quick "lost power" drop instead of a slow fade.
+  const IGNITION_OFF_DECAY_MULTIPLIER = 4.5;
+
   // Per-gear acceleration multiplier applied on top of ACCEL_RATE_RPM_PER_S.
   // Index 0 = neutral/no gear engaged (kept brisk — revving in neutral
   // has no drivetrain load), index 1 = 1st gear (heaviest multiplier,
@@ -352,8 +364,13 @@ const RPMSimulator = (() => {
 
   function step(dtSeconds) {
     if (!engineOn) {
-      // Ignition off: no target to chase, RPM just coasts down to 0.
-      currentRpm = approach(currentRpm, 0, SPINDOWN_RATE_RPM_PER_S, dtSeconds);
+      // Ignition off: the needle has no more electrical power behind it,
+      // so it collapses to 0 quickly (IGNITION_OFF_DECAY_MULTIPLIER above)
+      // rather than gliding down like a normal spindown — still a short
+      // animated fall, not an instant teleport, but fast enough to read
+      // as "the display just lost power" instead of "the engine is slowly
+      // coasting to a stop".
+      currentRpm = approach(currentRpm, 0, SPINDOWN_RATE_RPM_PER_S * IGNITION_OFF_DECAY_MULTIPLIER, dtSeconds);
       revLimiting = false;
       startFlarePhase = null;
       return;
