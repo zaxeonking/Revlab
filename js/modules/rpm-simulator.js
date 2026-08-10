@@ -256,11 +256,11 @@ const RPMSimulator = (() => {
   // with the thresholds AUTO mode actually shifts at.
   let GEAR_REV_LIMIT_RPM = [
     DEFAULT_REV_LIMIT_RPM, // N
-    3300,                  // 1
-    4800,                  // 2
-    6300,                  // 3
-    7800,                  // 4
-    8500,                  // 5 — now its own ceiling, not a fallback to REV_LIMIT_RPM
+    7000,                  // 1
+    7200,                  // 2
+    7400,                  // 3
+    7600,                  // 4
+    7900,                  // 5 — now its own ceiling, not a fallback to REV_LIMIT_RPM
     DEFAULT_REV_LIMIT_RPM, // 6 — intentionally the true engine redline (top gear)
   ];
 

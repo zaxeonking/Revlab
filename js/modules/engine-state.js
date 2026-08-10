@@ -617,7 +617,7 @@ const EngineState = (() => {
    *  used to drive shifts directly). */
   function gearForRpm(rpm) {
     if (rpm <= IDLE_RPM + 50) return 'N';
-    if (rpm < 2000) return '1';
+    if (rpm < 3000) return '1';
     if (rpm < 3500) return '2';
     if (rpm < 5000) return '3';
     if (rpm < 6500) return '4';
