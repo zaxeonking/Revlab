@@ -52,6 +52,7 @@ const UIController = (() => {
       speedGaugeUnit: document.getElementById('speedGaugeUnit'),
       speedWarningIndicator: document.getElementById('speedWarningIndicator'),
       speedUnitToggle: document.getElementById('speedUnitToggle'),
+      speedGaugeNeedle: document.getElementById('speedGaugeNeedle'),
       tempReadout: document.getElementById('tempReadout'),
       boostReadout: document.getElementById('boostReadout'),
       boostGaugeValue: document.getElementById('boostGaugeValue'),
@@ -273,7 +274,18 @@ const UIController = (() => {
    * fires on every simulation frame, not just on user input.
    */
   function render(state) {
-    if (gaugeRef) gaugeRef.setValueK(state.rpmK);
+    // BUG this fixes: the needle used to always track the engine's real
+    // RPM (idle ~800rpm) even in Neutral, while the digital readout
+    // right below it was hard-locked to "0" (see comment further down)
+    // — so the two visibly disagreed, needle sitting above the 0 mark
+    // while the number said 0. Neutral has no drivetrain connection at
+    // all (same reasoning speedForRpm/Gearbox already use), so once the
+    // start-up rev flare has finished settling (state.starting — still
+    // let the flare itself play out visually), the needle now rests at
+    // literal 0 in N, matching the readout. Any gear > 0 still shows the
+    // real live RPM as before.
+    const needleRpmK = (state.gearIndex === 0 && !state.starting) ? 0 : state.rpmK;
+    if (gaugeRef) gaugeRef.setValueK(needleRpmK);
     renderShiftLights(state);
     renderGearboxSpec();
     syncGaugeScales(state);
@@ -1051,6 +1063,27 @@ const UIController = (() => {
     }
   }
 
+  /** Plays the speed needle's one-shot "self-test" sweep — see the
+   *  .gauge__needle-group--startup-sweep keyframes in components.css for
+   *  why this is safe to layer on top of the real per-frame render().
+   *  Removing the class on 'animationend' (rather than a matching
+   *  setTimeout) guarantees it can never get stuck applied if the tab
+   *  was backgrounded/throttled mid-animation. */
+  function playSpeedStartupSweep() {
+    const el = els.speedGaugeNeedle;
+    if (!el) return;
+    el.classList.remove('gauge__needle-group--startup-sweep');
+    // Force reflow so re-adding the class retriggers the animation even
+    // if a previous sweep is still technically mid-flight (e.g. rapid
+    // stop/start clicking).
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetWidth;
+    el.classList.add('gauge__needle-group--startup-sweep');
+    el.addEventListener('animationend', () => {
+      el.classList.remove('gauge__needle-group--startup-sweep');
+    }, { once: true });
+  }
+
   /** Shared start/stop logic — used by both the START ENGINE button
    *  click and the Spacebar shortcut, so the two trigger paths can
    *  never drift out of sync (e.g. one forgetting the AudioEngine.init()
@@ -1069,6 +1102,7 @@ const UIController = (() => {
         ? 'AUDIO ENGINE: RUNNING'
         : 'AUDIO ENGINE: UNAVAILABLE');
       EngineState.startEngine();
+      playSpeedStartupSweep();
       logLine('START ENGINE — idle RPM engaged.');
     }
   }

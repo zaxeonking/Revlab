@@ -505,6 +505,7 @@ const EngineState = (() => {
     rpm: 0,
     throttlePercent: 0,
     brakePercent: 0,
+    starting: false,
     gear: 'N',
     gearIndex: 0,
     gearMode: 'auto',      // 'auto' | 'manual'
@@ -836,6 +837,11 @@ const EngineState = (() => {
     state.revLimiting = frame.revLimiting;
     state.inRedline = inRedline;
     state.paused = !!frame.paused;
+    // Exposed so the UI can tell "engine is still doing its start-up rev
+    // flare" apart from "settled and idling" — see gauge needle handling
+    // in ui-controller.js render(), which wants the flare to still play
+    // out visually even while sitting in Neutral.
+    state.starting = !!frame.starting;
 
     // ---- PERFORMANCE MODE: instantaneous torque / power -----------------
     // Full-throttle curve value at this RPM, blended down toward an idle
@@ -937,17 +943,32 @@ const EngineState = (() => {
     state.blowOffEventId = blowOffEventId;
     state.gearShiftEventId = shiftEventId;
 
-    if (!frame.engineOn || gearIndex === 0) {
-      // No drivetrain connection at all — either ignition off, or the
-      // gearbox is in neutral. Snap straight to 0 rather than smoothing
-      // the display down: the wheels are physically disconnected from
-      // the engine the instant neutral is engaged (coasting to a stop
-      // and dropping into N, or a manual shift down to N), same as when
-      // the engine itself stops. BUG: this used to only check
-      // frame.engineOn, so falling into neutral while the engine kept
-      // running left the speed readout gliding down over ~1s through
-      // the SPEED_DISPLAY_RATE_KMH_PER_S ramp instead of reading 0
-      // immediately.
+    if (!frame.engineOn) {
+      // Engine OFF: no more combustion/engine-braking, but the car
+      // doesn't teleport to a dead stop — it keeps rolling and sheds
+      // speed to rolling resistance/aero drag, same physical coast a
+      // real car does with the key off. Reuses the same
+      // COAST_DECEL_KMH_PER_S rate in-gear coasting already uses; the
+      // brake pedal (still mechanical, not ignition-gated — see
+      // BrakeController) adds on top exactly like it does while
+      // driving, so braking to a stop right after STOP ENGINE still
+      // works and still reads as a real deceleration curve, not a jump.
+      // BUG this fixes: STOP ENGINE used to snap displaySpeedKmh straight
+      // to 0 the same instant as neutral, so the speedometer teleported
+      // to 0 while the RPM/audio were still winding down — visually
+      // implying the car stopped dead the moment the key turned, not
+      // that it was still coasting on its own momentum.
+      displaySpeedKmh = Math.max(0, displaySpeedKmh - (COAST_DECEL_KMH_PER_S + brakeDecelKmhPerS) * dtSeconds);
+    } else if (gearIndex === 0) {
+      // No drivetrain connection at all — the gearbox is in neutral
+      // while the engine keeps running. Snap straight to 0 rather than
+      // smoothing the display down: the wheels are physically
+      // disconnected from the engine the instant neutral is engaged
+      // (coasting to a stop and dropping into N, or a manual shift down
+      // to N). BUG: this used to only check frame.engineOn, so falling
+      // into neutral while the engine kept running left the speed
+      // readout gliding down over ~1s through the SPEED_DISPLAY_RATE_KMH_PER_S
+      // ramp instead of reading 0 immediately.
       displaySpeedKmh = 0;
     } else {
       displaySpeedKmh = approachSpeed(displaySpeedKmh, targetSpeedKmh, dtSeconds);
@@ -1038,6 +1059,7 @@ const EngineState = (() => {
       rpm: 0,
       throttlePercent: 0,
       brakePercent: 0,
+      starting: false,
       gear: 'N',
       gearIndex: 0,
       gearMode: 'auto',

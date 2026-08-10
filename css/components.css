@@ -267,6 +267,26 @@
      that and introduce a second, uncontrolled layer of lag. */
 }
 
+/* Speed needle "self-test" sweep — plays once, briefly, right when
+   START ENGINE is pressed (see ui-controller.js playSpeedStartupSweep()),
+   the same cosmetic flourish a real instrument cluster does on power-up.
+   Purely visual: it does NOT touch displaySpeedKmh/state.speedKmh, so it
+   can never make the readout lie about actual speed — a CSS animation
+   on `transform` simply outranks whatever inline transform JS is also
+   setting on the same element for as long as the animation runs, then
+   hands control straight back once it ends (see animationend listener),
+   at which point the needle is already sitting at the real 0 the normal
+   per-frame render() call has been writing the whole time underneath. */
+@keyframes gauge-startup-sweep {
+  0% { transform: rotate(-130deg); }
+  55% { transform: rotate(130deg); }
+  100% { transform: rotate(-130deg); }
+}
+
+.gauge__needle-group--startup-sweep {
+  animation: gauge-startup-sweep 700ms cubic-bezier(0.35, 0, 0.25, 1);
+}
+
 .gauge__needle {
   stroke: var(--accent-cyan);
   stroke-width: 3;
