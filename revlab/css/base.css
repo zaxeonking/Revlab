@@ -8,13 +8,6 @@
 
 html, body {
   height: 100%;
-  /* Safety net: nothing in this layout is meant to exceed viewport
-     width at any breakpoint, but a fixed-position element (mobile
-     pedal/shifter), a long unbreakable telemetry string, or a future
-     regression could still push content wide on small screens. This
-     guarantees no horizontal scrollbar/jitter ever appears instead of
-     relying on every component getting its own overflow rule right. */
-  overflow-x: hidden;
 }
 
 body {
@@ -25,9 +18,6 @@ body {
   font-size: var(--fs-md);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
-  /* Touch devices: kill the default grey tap flash (we style :active
-     ourselves) and the ~300ms tap delay on interactive elements. */
-  -webkit-tap-highlight-color: transparent;
   /* Cockpit ambience: faint top/bottom instrument glow + a very subtle
      technical weave texture standing in for brushed carbon fiber. Kept
      deliberately low-contrast so it reads as material, not decoration. */
@@ -59,10 +49,6 @@ ul, li {
 button {
   font-family: inherit;
   cursor: pointer;
-  /* Removes the double-tap-to-zoom delay on touch/tablet so button
-     presses register immediately — controls that own a custom drag/hold
-     gesture (throttle button, pedal) override this back to `none`. */
-  touch-action: manipulation;
 }
 
 select, input {

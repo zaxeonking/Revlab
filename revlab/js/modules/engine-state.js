@@ -406,10 +406,14 @@ const EngineState = (() => {
    *  (edge-detected off shiftEventId, same pattern as blow-off) AND
    *  triggers RPMSimulator's RPM dip — replaces every direct
    *  RPMSimulator.triggerShiftDip() call site so the two can never fall
-   *  out of sync (a shift dip without a shift sound, or vice versa). */
-  function signalShiftEvent() {
+   *  out of sync (a shift dip without a shift sound, or vice versa).
+   *  fromGearIndex/toGearIndex are passed straight through to
+   *  RPMSimulator so it can compute the post-shift RPM from the actual
+   *  ratio change (newRPM = currentRPM × newRatio / currentRatio)
+   *  instead of a flat tuned fraction. */
+  function signalShiftEvent(fromGearIndex, toGearIndex) {
     shiftEventId += 1;
-    RPMSimulator.triggerShiftDip();
+    RPMSimulator.triggerShiftDip(fromGearIndex, toGearIndex);
   }
 
   let state = {
@@ -504,6 +508,25 @@ const EngineState = (() => {
     return now() < shiftLockUntil;
   }
 
+  /** Predicts the RPM the engine would land at after shifting from
+   *  fromGearIndex to toGearIndex, using the exact ratio relationship
+   *  (same formula RPMSimulator.triggerShiftDip() uses to actually
+   *  apply it):
+   *
+   *    newRPM = currentRPM × newGearRatio / currentGearRatio
+   *
+   *  Returns null if either gear has no ratio (neutral / unknown index)
+   *  — callers should treat null as "can't evaluate, don't block on it"
+   *  rather than as a specific predicted value. Used purely as a
+   *  pre-shift safety check (redline guard on downshift); it does not
+   *  itself change any state. */
+  function predictShiftRpm(currentRpm, fromGearIndex, toGearIndex) {
+    const currentRatio = Gearbox.gearRatioFor(fromGearIndex);
+    const newRatio = Gearbox.gearRatioFor(toGearIndex);
+    if (!currentRatio || !newRatio) return null;
+    return currentRpm * (newRatio / currentRatio);
+  }
+
   function engageShiftLock() {
     shiftLockUntil = now() + SHIFT_LOCK_MS;
   }
@@ -534,6 +557,7 @@ const EngineState = (() => {
 
     if (current.upAt !== null && rpm >= current.upAt && gearIndex < MAX_GEAR_INDEX) {
       const enteringFromNeutral = gearIndex === 0;
+      const fromGearIndex = gearIndex;
       gearIndex += 1;
       RPMSimulator.setGear(gearIndex);
       if (enteringFromNeutral) {
@@ -546,16 +570,27 @@ const EngineState = (() => {
         // 1st→2nd shift and up.
       } else {
         engageShiftLock();
-        signalShiftEvent();
+        signalShiftEvent(fromGearIndex, gearIndex);
       }
       return;
     }
 
     if (current.downAt !== null && rpm < current.downAt && gearIndex > 1) {
-      gearIndex -= 1;
+      // Safety check before committing to an AUTO downshift: predict the
+      // RPM the engine would land at in the lower gear (same ratio
+      // formula RPMSimulator.triggerShiftDip() uses) and refuse the
+      // downshift if it would land above redline — same rule MANUAL
+      // downshift enforces in shiftDown() below, kept in sync here so
+      // AUTO can never do something MANUAL is blocked from doing.
+      const fromGearIndex = gearIndex;
+      const toGearIndex = gearIndex - 1;
+      const predictedRpm = predictShiftRpm(rpm, fromGearIndex, toGearIndex);
+      if (predictedRpm !== null && predictedRpm > REDLINE_RPM) return;
+
+      gearIndex = toGearIndex;
       engageShiftLock();
       RPMSimulator.setGear(gearIndex);
-      signalShiftEvent();
+      signalShiftEvent(fromGearIndex, gearIndex);
       return;
     }
 
@@ -818,24 +853,37 @@ const EngineState = (() => {
   function shiftUp() {
     if (!state.engineOn || isShiftLocked()) return getState();
     if (gearIndex >= MAX_GEAR_INDEX) return getState();
+    const fromGearIndex = gearIndex;
     gearIndex += 1;
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
-    signalShiftEvent();
+    signalShiftEvent(fromGearIndex, gearIndex);
     return getState();
   }
 
   /** Manual downshift. Never shifts below 1st into neutral from the
    *  paddle/button — neutral is only reached by coasting to idle in 1st,
    *  matching how a real sequential shifter behaves. Also dips RPM, same
-   *  as shiftUp(). */
+   *  as shiftUp().
+   *
+   *  Safety check: before committing, predicts the RPM the engine would
+   *  land at in the lower gear (predictShiftRpm — same ratio formula
+   *  the actual dip uses) and refuses the downshift outright if that
+   *  would land above redline, rather than letting the driver bang the
+   *  engine straight into the limiter. This mirrors real synchro/rev-
+   *  matching protection: a downshift that would over-rev the engine
+   *  just doesn't engage. */
   function shiftDown() {
     if (!state.engineOn || isShiftLocked()) return getState();
     if (gearIndex <= 1) return getState();
-    gearIndex -= 1;
+    const fromGearIndex = gearIndex;
+    const toGearIndex = gearIndex - 1;
+    const predictedRpm = predictShiftRpm(state.rpm, fromGearIndex, toGearIndex);
+    if (predictedRpm !== null && predictedRpm > REDLINE_RPM) return getState();
+    gearIndex = toGearIndex;
     engageShiftLock();
     RPMSimulator.setGear(gearIndex);
-    signalShiftEvent();
+    signalShiftEvent(fromGearIndex, gearIndex);
     return getState();
   }
 
